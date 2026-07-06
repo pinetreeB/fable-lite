@@ -14,7 +14,7 @@
 | 항목 | 값 |
 |---|---|
 | 버전 | 2.1.0 (2026-06-18) |
-| 저자 | fivetaku (gptaku.ai@gmail.com) |
+| 저자 | fivetaku |
 | 라이선스 | MIT |
 | 타겟 플랫폼 | Claude Code 플러그인 시스템 |
 | 의존성 | Python 3 (stdlib only), bash |
