@@ -1,0 +1,17 @@
+완료했습니다. 검증 증거를 파일로 남겼습니다.
+
+**산출물 (`f3-on\`)**
+- `counter.html` — 카운터 페이지
+- `VERIFICATION.txt` — 관측 로그 (증거)
+- `verification-shot.png` — 렌더링 스크린샷 (증거)
+
+**검증 (RUN→OBSERVE, 헤드리스 Chromium 실구동)**
+```
+PASS 초기: expected 0, got 0
+PASS +3:  expected 3, got 3
+PASS -1:  expected 2, got 2
+PASS 리셋: expected 0, got 0
+ALL PASS
+```
+
+＋/−/리셋 버튼 클릭을 실제로 구동해 카운트 값을 관측했고 모두 통과했습니다. 렌더링도 스크린샷으로 확인됐습니다.

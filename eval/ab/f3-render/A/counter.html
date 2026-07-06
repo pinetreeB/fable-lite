@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>카운터</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0f172a;
+      color: #f1f5f9;
+    }
+    .card {
+      background: #1e293b;
+      padding: 48px 56px;
+      border-radius: 20px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+      text-align: center;
+    }
+    h1 { font-size: 18px; font-weight: 500; color: #94a3b8; margin-bottom: 20px; }
+    .count {
+      font-size: 88px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      margin-bottom: 28px;
+      transition: transform 0.1s ease;
+    }
+    .buttons { display: flex; gap: 12px; }
+    button {
+      flex: 1;
+      font-size: 24px;
+      font-weight: 600;
+      padding: 14px 0;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      color: #f1f5f9;
+      background: #334155;
+      transition: background 0.15s ease, transform 0.05s ease;
+    }
+    button:hover { background: #475569; }
+    button:active { transform: scale(0.95); }
+    .plus { background: #2563eb; }
+    .plus:hover { background: #3b82f6; }
+    .reset { font-size: 16px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>카운터</h1>
+    <div class="count" id="count">0</div>
+    <div class="buttons">
+      <button class="minus" onclick="change(-1)">−</button>
+      <button class="reset" onclick="reset()">초기화</button>
+      <button class="plus" onclick="change(1)">+</button>
+    </div>
+  </div>
+  <script>
+    let count = 0;
+    const el = document.getElementById('count');
+    function render() {
+      el.textContent = count;
+      el.style.transform = 'scale(1.15)';
+      setTimeout(() => el.style.transform = 'scale(1)', 100);
+    }
+    function change(n) { count += n; render(); }
+    function reset() { count = 0; render(); }
+  </script>
+</body>
+</html>

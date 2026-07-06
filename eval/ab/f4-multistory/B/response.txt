@@ -1,0 +1,5 @@
+세 가지 수정 모두 완료했습니다.
+
+- **messages.py** — `Wellcome` → `Welcome` 오타 수정
+- **utils.py** — `square(x)` 함수 추가 (`x * x` 반환)
+- **settings.py** — `MAX_RETRIES` 값 `3` → `5`로 변경

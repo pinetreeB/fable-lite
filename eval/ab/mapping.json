@@ -1,0 +1,21 @@
+{
+  "description": "arm 정체 매핑 — 블라인드 채점 완료 전까지 열람 금지. A/B 라벨은 픽스처마다 독립적으로 배정됨(고정 패턴 아님).",
+  "arms": {
+    "off": "fable-lite 플러그인 미적용 (claude -p --setting-sources project --no-session-persistence, 순정)",
+    "on": "fable-lite 플러그인 적용 (동일 + --plugin-dir C:\\Users\\rotat\\fable-lite)"
+  },
+  "mapping": {
+    "f1-bugfix-simple": { "A": "off", "B": "on" },
+    "f2-bugfix-competing": { "A": "on", "B": "off" },
+    "f3-render": { "A": "off", "B": "on" },
+    "f4-multistory": { "A": "on", "B": "off" },
+    "f5-scope": { "A": "off", "B": "on" }
+  },
+  "raw_command_ids": {
+    "f1-bugfix-simple": { "off": "b607ehkkl", "on": "brm95hi2l" },
+    "f2-bugfix-competing": { "off": "b0wnsc3ge", "on": "bygr5xpza" },
+    "f3-render": { "off": "bq1mvylz7", "on": "b2dpslr2v" },
+    "f4-multistory": { "off": "bryj8p7he", "on": "bz4isn67x" },
+    "f5-scope": { "off": "bpgjkwi0g", "on": "bsbg0qzu7" }
+  }
+}

@@ -1,0 +1,11 @@
+검증 증거를 체크포인트에 기록했습니다 (`verified: true`).
+
+세 파일 수정 모두 완료·검증되었습니다:
+
+| 파일 | 변경 | 검증 |
+|------|------|------|
+| messages.py | `Wellcome` → `Welcome` | `WELCOME=='Welcome to the app'` ✅ |
+| utils.py | `square(x)` 함수 추가 | `square(4)==16` ✅ |
+| settings.py | `MAX_RETRIES` 3 → 5 | `MAX_RETRIES==5` ✅ |
+
+verify-cmd가 `ok`를 출력하며 통과했고, evidence가 goals 체크포인트에 저장되었습니다.

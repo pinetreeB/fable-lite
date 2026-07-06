@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>카운터</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    .card {
+      background: #fff;
+      padding: 48px 56px;
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.25);
+      text-align: center;
+    }
+    h1 { font-size: 20px; color: #555; margin-bottom: 24px; font-weight: 600; }
+    #count {
+      font-size: 88px;
+      font-weight: 700;
+      color: #764ba2;
+      line-height: 1;
+      margin-bottom: 32px;
+      font-variant-numeric: tabular-nums;
+    }
+    .buttons { display: flex; gap: 12px; justify-content: center; }
+    button {
+      font-size: 24px;
+      width: 60px;
+      height: 60px;
+      border: none;
+      border-radius: 14px;
+      cursor: pointer;
+      color: #fff;
+      transition: transform .1s, filter .15s;
+    }
+    button:active { transform: scale(.92); }
+    button:hover { filter: brightness(1.08); }
+    .minus { background: #ef4444; }
+    .reset { background: #94a3b8; font-size: 15px; }
+    .plus  { background: #22c55e; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>카운터</h1>
+    <div id="count">0</div>
+    <div class="buttons">
+      <button class="minus" onclick="update(-1)">−</button>
+      <button class="reset" onclick="reset()">리셋</button>
+      <button class="plus" onclick="update(1)">＋</button>
+    </div>
+  </div>
+
+  <script>
+    let count = 0;
+    const el = document.getElementById('count');
+    function render() { el.textContent = count; }
+    function update(delta) { count += delta; render(); }
+    function reset() { count = 0; render(); }
+  </script>
+</body>
+</html>

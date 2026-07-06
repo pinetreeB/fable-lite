@@ -1,0 +1,6 @@
+counter.html verification (Playwright headless chromium 1229)
+PASS 초기: expected 0, got 0
+PASS +3: expected 3, got 3
+PASS -1: expected 2, got 2
+PASS 리셋: expected 0, got 0
+ALL PASS
