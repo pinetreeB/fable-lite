@@ -1,0 +1,8 @@
+검증 증거를 goals 체크포인트에 기록했습니다 (`verified: true`).
+
+세 파일 수정 완료 및 검증됨:
+- **messages.py** — `Wellcome` → `Welcome`
+- **utils.py** — `square(x)` 함수 추가
+- **settings.py** — `MAX_RETRIES` 5
+
+검증 관측: `python -c "import messages,utils,settings; ..."` → `ok` 출력 (exit 0). 세 assert(`WELCOME=='Welcome to the app'`, `square(4)==16`, `MAX_RETRIES==5`) 모두 통과.

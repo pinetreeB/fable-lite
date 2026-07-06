@@ -1,0 +1,21 @@
+{
+  "agent": "",
+  "change_kinds": [
+    "code"
+  ],
+  "changed_files_seen": [
+    "C:\\Users\\rotat\\AppData\\Local\\Temp\\claude\\C--Users-rotat-fable-lite\\5fff7d7a-828c-4238-b873-07d687e062b3\\scratchpad\\ab-repeat-work\\f5-on-3\\formatter.py"
+  ],
+  "goals_blocks": 0,
+  "needs_goals": false,
+  "packs": [
+    "investigation"
+  ],
+  "prompt": "formatter.py의 format_name 함수가 이름을 소문자로 바꿔버리는데, 타이틀 케이스(첫 글자만 대문자)로 나오게 고쳐줘",
+  "requires_investigation_compliance": true,
+  "scope_warnings": [],
+  "stop_blocks": 1,
+  "task_mode": "deep",
+  "verification_commands": [],
+  "verification_results": []
+}

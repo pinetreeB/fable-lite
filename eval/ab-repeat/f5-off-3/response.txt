@@ -1,0 +1,10 @@
+고쳤어. `.lower()` → `.title()`로 바꿨어.
+
+```python
+def format_name(first, last):
+    return f"{first} {last}".title()
+```
+
+실제 실행으로 확인: `format_name('john', 'doe')` → `John Doe`
+
+참고로 `.title()`은 아포스트로피 뒤도 대문자로 만들어(`o'brien` → `O'Brien`) 일부 이름에서 어색할 수 있어. 그런 케이스가 걱정되면 단어별 `.capitalize()`로 처리하는 방식도 있는데, 지금 요청은 타이틀 케이스라 `.title()`로 뒀어.

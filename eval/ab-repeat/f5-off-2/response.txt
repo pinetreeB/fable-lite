@@ -1,0 +1,1 @@
+`.lower()` → `.title()`로 바꿨습니다. 이제 `format_name("john", "SMITH")` → `"John Smith"`처럼 각 단어 첫 글자만 대문자로 나옵니다.

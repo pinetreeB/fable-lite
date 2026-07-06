@@ -1,0 +1,6 @@
+완료했습니다. `formatter.py`의 `format_name`을 `.lower()` → `.title()`로 수정했고, 실행 확인 결과:
+
+- `format_name('JOHN', 'DOE')` → `John Doe`
+- `format_name('jane', 'smith')` → `Jane Smith`
+
+이제 첫 글자만 대문자인 타이틀 케이스로 나옵니다.

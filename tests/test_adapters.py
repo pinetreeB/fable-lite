@@ -182,3 +182,19 @@ def test_plugin_manifest_and_hooks_json_exist() -> None:
     for hook_entries in hooks["hooks"].values():
         for entry in hook_entries:
             assert entry["hooks"][0]["timeout"] == 10
+
+
+def test_tool_success_falls_back_to_stdout_when_exit_code_missing() -> None:
+    # E1b F4 회귀: nested headless 세션은 exit_code/success 필드를 안 채운다.
+    # stdout 텍스트로 보수적 폴백해야 진짜 통과한 검증이 게이트에 보인다.
+    from adapters.claude_code.common import tool_success
+
+    passed = {"tool_response": {"stdout": "3 passed in 0.02s"}}
+    failed = {"tool_response": {"stdout": "1 failed, 2 passed\nFAILED test_x"}}
+    empty = {"tool_response": {"stdout": ""}}
+    explicit_false = {"tool_response": {"success": False, "stdout": "3 passed"}}
+
+    assert tool_success(passed) is True
+    assert tool_success(failed) is False       # 실패 신호 우선
+    assert tool_success(empty) is False        # 판정 불가 → 보수적 실패
+    assert tool_success(explicit_false) is False  # 명시 실패 필드 신뢰

@@ -1,0 +1,13 @@
+検証을 다시 관측했습니다 — 실제 실행 증거:
+
+```
+VERIFY_OK
+exit=0
+```
+
+이 명령은 세 변경을 모두 실제로 구동해 확인합니다:
+- `messages.WELCOME == 'Welcome to the app'` (오타 수정)
+- `utils.square(3) == 9` (제곱 함수)
+- `settings.MAX_RETRIES == 5` (값 변경)
+
+세 assert가 모두 통과하고 `VERIFY_OK`를 출력, 종료 코드 0. 작업 완료 및 검증되었습니다.

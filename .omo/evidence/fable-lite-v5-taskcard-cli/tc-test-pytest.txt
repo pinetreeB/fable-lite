@@ -1,0 +1,7 @@
+COMMAND: python -m pytest tests/test_fable_lite_cli.py -q
+EXIT_CODE: 0
+OUTPUT:
+C:\Python312\Lib\site-packages\requests\__init__.py:113: RequestsDependencyWarning: urllib3 (2.6.3) or chardet (7.0.1)/charset_normalizer (3.4.4) doesn't match a supported version!
+  warnings.warn(
+......                                                                   [100%]
+6 passed in 7.49s

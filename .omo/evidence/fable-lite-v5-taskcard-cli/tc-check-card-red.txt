@@ -1,0 +1,15 @@
+COMMAND: PYTHONPATH=C:\Users\rotat\fable-lite python -m fable_lite check --card card.json (cwd=tmp/qa-taskcard-cli/red-repo)
+EXIT_CODE: 1
+OUTPUT:
+fable-lite check: RED
+- root: C:\Users\rotat\fable-lite\tmp\qa-taskcard-cli\red-repo
+- agent: codex
+- changed: 1
+- card: C:\Users\rotat\fable-lite\tmp\qa-taskcard-cli\red-repo\card.json
+  - secrets/token.txt
+- scope ��Ż:
+  - secrets/token.txt: ���� ��Ż ���ɼ�: ��û ���� �� ���� ������ �����Ǿ����ϴ�. �ٺ����� ������ ���� ���̵������̸� ���� ���������� �ٰŸ� ���⼼��. / Potential scope drift detected; root-cause side-file edits may be valid with evidence.
+- forbidden ħ��:
+  - secrets/token.txt: forbidden_paths ħ��
+- verify �䱸:
+  - verify `python -m pytest tests/` ���� ����� �����ϴ�

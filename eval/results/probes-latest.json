@@ -195,7 +195,7 @@
         "observed": {
           "returncode": 0,
           "stderr_tail": "C:\\Python312\\Lib\\site-packages\\requests\\__init__.py:113: RequestsDependencyWarning: urllib3 (2.6.3) or chardet (7.0.1)/charset_normalizer (3.4.4) doesn't match a supported version!\n  warnings.warn(\n",
-          "stdout_tail": "============================= test session starts =============================\nplatform win32 -- Python 3.12.8, pytest-9.0.3, pluggy-1.6.0\nrootdir: C:\\Users\\rotat\\fable-lite\nplugins: anyio-4.12.1, hydra-core-1.3.2, langsmith-0.7.22, asyncio-1.3.0, typeguard-4.5.1\nasyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function\ncollected 16 items\n\ntests\\test_core_contracts.py ................                            [100%]\n\n============================= 16 passed in 0.08s ==============================\n"
+          "stdout_tail": "============================= test session starts =============================\nplatform win32 -- Python 3.12.8, pytest-9.0.3, pluggy-1.6.0\nrootdir: C:\\Users\\rotat\\fable-lite\nplugins: anyio-4.12.1, hydra-core-1.3.2, langsmith-0.7.22, asyncio-1.3.0, typeguard-4.5.1\nasyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function\ncollected 16 items\n\ntests\\test_core_contracts.py ................                            [100%]\n\n============================= 16 passed in 0.10s ==============================\n"
         },
         "status": "pass"
       },
@@ -317,7 +317,7 @@
         "observed": {
           "returncode": 0,
           "stderr_tail": "C:\\Python312\\Lib\\site-packages\\requests\\__init__.py:113: RequestsDependencyWarning: urllib3 (2.6.3) or chardet (7.0.1)/charset_normalizer (3.4.4) doesn't match a supported version!\n  warnings.warn(\n",
-          "stdout_tail": "============================= test session starts =============================\nplatform win32 -- Python 3.12.8, pytest-9.0.3, pluggy-1.6.0\nrootdir: C:\\Users\\rotat\\fable-lite\nplugins: anyio-4.12.1, hydra-core-1.3.2, langsmith-0.7.22, asyncio-1.3.0, typeguard-4.5.1\nasyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function\ncollected 25 items\n\ntests\\test_adapters.py .......                                           [ 28%]\ntests\\test_core_contracts.py ................                            [ 92%]\ntests\\test_goals_cli.py ..                                               [100%]\n\n============================= 25 passed in 1.16s ==============================\n"
+          "stdout_tail": "============================= test session starts =============================\nplatform win32 -- Python 3.12.8, pytest-9.0.3, pluggy-1.6.0\nrootdir: C:\\Users\\rotat\\fable-lite\nplugins: anyio-4.12.1, hydra-core-1.3.2, langsmith-0.7.22, asyncio-1.3.0, typeguard-4.5.1\nasyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function\ncollected 26 items\n\ntests\\test_adapters.py ........                                          [ 30%]\ntests\\test_core_contracts.py ................                            [ 92%]\ntests\\test_goals_cli.py ..                                               [100%]\n\n============================= 26 passed in 1.27s ==============================\n"
         },
         "status": "pass"
       },

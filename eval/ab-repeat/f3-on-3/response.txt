@@ -1,0 +1,13 @@
+실제 파일 구동 검증 완료.
+
+**RUN→OBSERVE 증거** (jsdom으로 `counter.html` 스크립트 실제 실행 + 클릭 이벤트 디스패치):
+```
+initial=0
+after 3x + = 3       ← 증가 버튼 배선 정상
+after - = 2          ← 감소 정상
+after reset = 0      ← 리셋 정상
+after - (negative) = -1  ← 음수 지원 정상
+```
+필수 요소 `#count/#inc/#dec/#reset` 모두 존재, 이벤트 리스너가 화면 표시값(`#count.textContent`)을 실제로 갱신함을 관측했습니다. MISSING 경고 없음.
+
+**`counter.html`** — 다크 카드 UI의 증가/감소/리셋 카운터, 숫자 변경 애니메이션, Pretendard 폰트. 브라우저에서 열면 바로 동작합니다.

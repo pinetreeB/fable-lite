@@ -6,7 +6,12 @@ import sys
 
 EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 SHELL_TOOLS = {"Bash", "PowerShell"}
-TEST_TERMS = ("pytest", "python -m pytest", "npm test", "go test", "cargo test", "node --test")
+# 검증 명령으로 인정하는 신호. python -c "assert ..." 한 줄 검증(E1b F4에서 관측)·unittest·JS 러너 포함.
+TEST_TERMS = (
+    "pytest", "python -m pytest", "python -c", "python3 -c", "unittest",
+    "npm test", "npm run test", "yarn test", "pnpm test", "jest", "vitest",
+    "go test", "cargo test", "node --test", "node:test", "deno test", "rspec", "phpunit",
+)
 
 
 def _fail_open(message: str) -> int:

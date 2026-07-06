@@ -1,5 +1,7 @@
 # E1 — fable-lite ON vs OFF 통제 비교 (A/B 실측)
 
+> **정정 노트 (E1b 반복측정 반영)**: 아래 배율 수치(F3 "5.4배·42배", F4 "2.3배" 등)는 조건당 1회 시행의 값으로, [e1b-repeat.md](e1b-repeat.md)의 3회 반복에서 **정성적 차이(검증 시도 여부)는 견고하게 재현됐으나 배율은 크게 변동**함이 밝혀졌다. 배율은 범위로만 해석하라. E1b는 검증 인정 버그(python -c·exit_code 미제공)도 발견해 수정으로 이어졌다.
+
 **방법**: P5/P5b와 동일 방법론(격리 디렉토리, `--plugin-dir`, 해시 무결성 확인). 5개 픽스처 × 2 arm = 10회, 전부 병렬 실행. OFF = `claude -p --setting-sources project --no-session-persistence --permission-mode bypassPermissions`(플러그인 없음, 순정) / ON = 동일 + `--plugin-dir C:\Users\rotat\fable-lite`. 모델·툴셋·권한모드 양쪽 동일, 픽스처는 매 arm 독립 디렉토리(사전 git 커밋 상태에서 시작, 리셋 불필요).
 **블라인드**: 원출력은 `eval/ab/<fixture>/{A,B}/`에 보관, arm 매핑은 `eval/ab/mapping.json`에만(픽스처별 A/B 배정은 고정 패턴이 아님). 응답 텍스트에 리터럴 "fable-lite" 문구 누출 없음을 grep으로 확인 후 저장(마커 자체(가설/증거/기각)는 측정 대상 행동이라 유지).
 **주의**: 10개 세션을 전부 동시 병렬 실행했다 — 개별 세션의 시간(wall-clock)에는 동시 실행에 따른 자원 경합/큐잉이 다소 섞여 있을 수 있다(비용 수치는 API 처리량 기준이라 이 영향이 적음). 정성적 행동 차이(검증 시도 여부, 마커 유무, 파일 개수)는 병렬 실행과 무관하게 신뢰할 수 있다.

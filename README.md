@@ -13,7 +13,9 @@ A Korean-first Claude Code harness that makes lower Claude models (Opus, Sonnet)
 
 In a live 3-run experiment with unrestricted tools ([report](docs/reviews/p5b-n1-natural.md)), pack instructions alone produced **0/3** natural compliance; the deterministic Stop gate converged all three runs to *one block → one full recovery* with real evidence (file:line citations, re-run outputs). Discipline packs tell the model *what* to do; hooks make skipping it impossible to finish.
 
-In a controlled ON-vs-OFF A/B (5 tasks, blind-judged by a different model — [report](docs/reviews/e1-ab-report.md)): **ON won 5/5 (137 vs 109 rubric points)**. Correctness was identical; the gap opens exactly where verification gets inconvenient — the render task (OFF: *"just open it in a browser"* vs ON: headless-browser clicks + screenshot evidence) and the multi-story task (unverified completion claims **3 vs 0**).
+In a controlled ON-vs-OFF A/B (5 tasks, blind-judged by a different model — [report](docs/reviews/e1-ab-report.md)): **ON won 5/5 (137 vs 109 rubric points)**. Correctness was identical; the gap opens exactly where verification gets inconvenient — the render task (OFF: *"just open it in a browser"* vs ON: real browser observation) and the multi-story task (OFF made zero verification attempts).
+
+The qualitative gap **held across 3 repeat runs** (OFF verified 0/3, ON 3/3), though the *cost multiplier* swings too much to quote as a single number ([repeat study](docs/reviews/e1b-repeat.md)) — which also surfaced and fixed a real verification-crediting bug in the harness. We report what replicates and flag what doesn't.
 
 ## What's inside
 

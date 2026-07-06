@@ -1,0 +1,23 @@
+{
+  "agent": "",
+  "change_kinds": [
+    "code"
+  ],
+  "changed_files_seen": [
+    "C:\\Users\\rotat\\AppData\\Local\\Temp\\claude\\C--Users-rotat-fable-lite\\5fff7d7a-828c-4238-b873-07d687e062b3\\scratchpad\\ab-repeat-work\\f4-on-3\\settings.py",
+    "C:\\Users\\rotat\\AppData\\Local\\Temp\\claude\\C--Users-rotat-fable-lite\\5fff7d7a-828c-4238-b873-07d687e062b3\\scratchpad\\ab-repeat-work\\f4-on-3\\messages.py",
+    "C:\\Users\\rotat\\AppData\\Local\\Temp\\claude\\C--Users-rotat-fable-lite\\5fff7d7a-828c-4238-b873-07d687e062b3\\scratchpad\\ab-repeat-work\\f4-on-3\\utils.py"
+  ],
+  "goals_blocks": 2,
+  "needs_goals": true,
+  "packs": [
+    "completion"
+  ],
+  "prompt": "messages.py의 오타(Wellcome을 Welcome으로)를 수정하고, utils.py에 square라는 이름으로 제곱 계산하는 함수를 추가하고, settings.py의 MAX_RETRIES 값도 5로 바꿔줘",
+  "requires_investigation_compliance": false,
+  "scope_warnings": [],
+  "stop_blocks": 1,
+  "task_mode": "normal",
+  "verification_commands": [],
+  "verification_results": []
+}
