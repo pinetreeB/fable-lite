@@ -28,17 +28,9 @@ But what people who use Fable actually feel isn't just capability. It's **the fo
 
 So we dropped Fable's weight (model capability) and carried over only its way of working — hence **fable-lite**.
 
-## 🤝 Pairing with "completion engines" like LazyCodex (ulw)
+## 🤝 Synergy with LazyCodex (ulw)
 
-Tools like LazyCodex (OmO `ulw`) enforce **"don't stop"** — they self-resume past usage limits and drive large tasks to completion in parallel: the **accelerator**. fable-lite enforces the opposite direction — **"don't finish carelessly"**: the **brake and checkpoint**. They're not competitors; they compose.
-
-Layering the fable-lite adapter onto Codex CLI (`adapters/codex_cli/INSTALL.ko.md`) gives you:
-
-- While ulw pushes the run to completion, fable-lite **deterministically inspects evidence at every completion attempt** — unlike model-judges-model reviewer gates, it finishes in milliseconds, costs zero tokens, and rules identically every time
-- It structurally blocks the classic side effect of long autonomous runs: **mass-producing unverified "done!"s**
-- High-risk operations (DB migrations, mass deletes) can't slip through mid-run without a `contract.json`
-
-**Accelerator (force to the finish) + brake (proof it actually finished)** — that combination is the closest thing to Fable's "push through, but properly." This very repository was built with exactly that combo (implemented under ulw, inspected by fable-lite).
+[LazyCodex/OmO](https://github.com/code-yeongyu/oh-my-openagent)'s `ulw` drives tasks to completion; fable-lite inspects evidence at every completion attempt — the roles don't overlap. Run both on Codex CLI (`adapters/codex_cli/INSTALL.ko.md`) and you get runs that **push all the way through, but can't finish with an unverified "done"**. This repository itself was built with that combo (implemented under ulw, inspected by fable-lite).
 
 ---
 
