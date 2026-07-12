@@ -4,10 +4,12 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Final
 
-from .ledger import JsonObject, JsonValue, capture_verification_covers, classify_change_kind, load_ledger, record_event
+from .adapter_change_events import record_observed_changes
+from .ledger import JsonObject, capture_verification_covers, load_ledger, record_event
 from .provenance_lifecycle import ProvenanceLifecycle
 from .provenance_lifecycle_types import ObservationResult, ObservedChange
 from .provenance_store import SnapshotStoreError
+from .shell_hints import shell_candidate_paths
 from .verification import is_verification_command
 from .verification_covers import active_turn
 
@@ -67,7 +69,7 @@ def start_turn(root: Path, invocation: CanonicalInvocation) -> ObservationReport
 
 
 def begin_invocation(root: Path, invocation: CanonicalInvocation) -> ObservationReport:
-    invocation = _active_invocation(root, invocation)
+    invocation = _with_shell_candidates(_active_invocation(root, invocation))
     try:
         lifecycle = ProvenanceLifecycle(root)
         lifecycle.resume_turn(invocation.agent_key, invocation.turn_id, _mutation_capable(invocation))
@@ -87,7 +89,7 @@ def begin_invocation(root: Path, invocation: CanonicalInvocation) -> Observation
 
 
 def observe_post_tool(root: Path, invocation: CanonicalInvocation) -> ObservationReport:
-    invocation = _active_invocation(root, invocation)
+    invocation = _with_shell_candidates(_active_invocation(root, invocation))
     try:
         lifecycle = ProvenanceLifecycle(root)
         lifecycle.resume_turn(invocation.agent_key, invocation.turn_id, _mutation_capable(invocation))
@@ -176,14 +178,13 @@ def _record_changes(
 ) -> None:
     if not changes:
         return
-    paths: list[JsonValue] = [_path(change) for change in changes]
-    payload = _ledger_payload(root, invocation) | {
-        "event": "change",
-        "event_id": f"{invocation.invocation_id}:change",
-        "current_snapshot_id": snapshot_id,
-        "paths": paths,
-    }
-    _ = record_event(payload)
+    record_observed_changes(
+        _ledger_payload(root, invocation),
+        invocation.invocation_id,
+        invocation.phase,
+        changes,
+        snapshot_id,
+    )
 
 
 def _record_status(root: Path, invocation: CanonicalInvocation, report: ObservationReport) -> None:
@@ -195,19 +196,6 @@ def _record_status(root: Path, invocation: CanonicalInvocation, report: Observat
     if _mutation_capable(invocation):
         payload["provenance_mutation_capable"] = True
     _ = record_event(payload)
-
-
-def _path(change: ObservedChange) -> JsonObject:
-    kind = classify_change_kind(change.path)
-    return {
-        "change_id": change.change_id,
-        "path": change.path,
-        "op": change.op.value,
-        "kind": kind,
-        "before": change.before_digest,
-        "after": change.after_digest,
-        "requires_verification": kind != "docs",
-    }
 
 
 def _ledger_payload(root: Path, invocation: CanonicalInvocation) -> JsonObject:
@@ -246,6 +234,13 @@ def _active_invocation(root: Path, invocation: CanonicalInvocation) -> Canonical
     if len(parts) != 3 or not isinstance(turn_id, str) or not turn_id:
         return invocation
     return replace(invocation, session_id=parts[1], turn_id=turn_id)
+
+
+def _with_shell_candidates(invocation: CanonicalInvocation) -> CanonicalInvocation:
+    if invocation.tool_family_hint != "shell":
+        return invocation
+    candidates = tuple(dict.fromkeys((*invocation.candidate_paths, *shell_candidate_paths(invocation.command_hint))))
+    return replace(invocation, candidate_paths=candidates)
 
 
 def _stored_candidates(root: Path, invocation: CanonicalInvocation) -> tuple[str, ...]:

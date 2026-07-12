@@ -22,7 +22,8 @@ def record_deltas(
         change_id = change_id_for(delta)
         existing = state.changes.get(change_id)
         if existing is None:
-            owner = observation.agent if observation.agent and observation.source != "external" else None
+            source = _source_for_delta(state, observation.source, delta.path)
+            owner = observation.agent if observation.agent and source != "external" else None
             change = ObservedChange(
                 change_id,
                 delta.path,
@@ -30,7 +31,7 @@ def record_deltas(
                 delta.op,
                 None if delta.before is None else delta.before.digest,
                 None if delta.after is None else delta.after.digest,
-                observation.source,
+                source,
                 owner,
                 "exclusive",
                 (observation.agent,) if observation.agent else (),
@@ -47,6 +48,13 @@ def record_deltas(
         elif observed_by != existing.observed_by:
             state.changes[change_id] = replace_observation(existing, observed_by, False)
     return tuple(added)
+
+
+def _source_for_delta(state: LifecycleState, source: str, path: str) -> str:
+    current = state.current
+    if source != "external" and current is not None and current.is_generated(path):
+        return "generated"
+    return source
 
 
 def pending_change_ids(state: LifecycleState, turn: TurnState) -> tuple[str, ...]:

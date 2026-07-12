@@ -19,6 +19,7 @@ from adapters.codex_cli.common import tool_file_paths as codex_paths
 from adapters.codex_cli.common import tool_output as codex_output
 from adapters.codex_cli.common import tool_success as codex_success
 from core.ledger import JsonObject, JsonValue, load_ledger, record_event
+from core.shell_hints import shell_candidate_paths
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -90,6 +91,7 @@ def test_unrecognized_shell_write_is_found_by_stop_full_reconcile(tmp_path: Path
     target.write_text("before", encoding="utf-8")
     _claude_prompt(tmp_path, "app.py에 계산 페이지를 만들어줘")
     target.write_text("after", encoding="utf-8")
+    assert shell_candidate_paths("opaque-shell-writer") == ()
     _ = _run(
         CLAUDE / "post_tool_use.py",
         {

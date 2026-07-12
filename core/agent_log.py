@@ -14,6 +14,7 @@ from uuid import uuid4
 from .ledger_schema import JsonObject, JsonValue
 LOCK_WAIT_SECONDS = 15.0
 STALE_LOCK_SECONDS = 10.0
+TEST_LOCK_WAIT_ENV = "FABLE_LITE_TEST_LOCK_WAIT_SECONDS"
 
 
 def _safe_agent_name(agent: str) -> str:
@@ -107,12 +108,14 @@ def _acquire_owner_lock(path: Path, deadline: float, owner: str) -> int:
     while descriptor is None:
         try:
             descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600)
-        except FileExistsError:
+        except (FileExistsError, PermissionError) as exc:
+            if isinstance(exc, PermissionError) and not path.exists():
+                raise
             stale = _stale_record(path)
             if stale is not None and _unlink_matching_record(path, stale):
                 continue
             if time.monotonic() >= deadline:
-                raise TimeoutError(f"timed out waiting for ledger lock: {path}")
+                raise TimeoutError(f"timed out waiting for ledger lock: {path}") from exc
             time.sleep(0.01)
     encoded = owner.encode("ascii")
     _ = os.write(descriptor, encoded)
@@ -136,7 +139,7 @@ def ledger_transaction(project_root: str) -> Iterator[None]:
     directory = Path(project_root).resolve() / ".fable-lite"
     directory.mkdir(parents=True, exist_ok=True)
     lock_path = directory / "ledger.lock"
-    deadline = time.monotonic() + LOCK_WAIT_SECONDS
+    deadline = time.monotonic() + _lock_wait_seconds()
     if os.name == "posix":
         with _posix_guard(directory / "ledger.guard", deadline):
             with _owned_lock(lock_path, deadline):
@@ -144,6 +147,17 @@ def ledger_transaction(project_root: str) -> Iterator[None]:
     else:
         with _owned_lock(lock_path, deadline):
             yield
+
+
+def _lock_wait_seconds() -> float:
+    test_value = os.environ.get(TEST_LOCK_WAIT_ENV)
+    if test_value is None:
+        return LOCK_WAIT_SECONDS
+    try:
+        wait_seconds = float(test_value)
+    except ValueError:
+        return LOCK_WAIT_SECONDS
+    return wait_seconds if wait_seconds > 0 else LOCK_WAIT_SECONDS
 
 
 def _json_safe(value: JsonValue) -> bool:

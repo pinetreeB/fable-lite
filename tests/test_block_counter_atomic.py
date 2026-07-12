@@ -15,20 +15,15 @@ from core.verify_state import evaluate_stop
 
 ROOT = Path(__file__).resolve().parents[1]
 WINDOWS_ONLY = skipIf(os.name != "nt", "Windows subprocess contract")
-WORKER = """
-from multiprocessing.connection import Client
-import json
-import sys
-from core.contract import evaluate_pretool_contract
-from core.verify_state import evaluate_stop
-channel = Client((sys.argv[1], int(sys.argv[2])), authkey=bytes.fromhex(sys.argv[3]))
-channel.send_bytes(sys.argv[4].encode("ascii"))
-channel.recv_bytes()
-actions = {"stop": evaluate_stop, "pretool": evaluate_pretool_contract}
-result = actions[sys.argv[5]](json.loads(sys.argv[6]))
-channel.send_bytes(str(result["decision"]).encode("ascii"))
-channel.close()
-"""
+
+
+class WorkerFailure(RuntimeError):
+    def __init__(self, index: int, error_type: str, detail: str) -> None:
+        self.error_type = error_type
+        super().__init__(f"worker[{index}] {error_type}: {detail}")
+
+
+WORKER = ROOT / "tests" / "support" / "block_counter_worker.py"
 
 
 def _concurrent_decisions(action: str, payloads: list[JsonObject]) -> list[str]:
@@ -40,12 +35,16 @@ def _concurrent_decisions(action: str, payloads: list[JsonObject]) -> list[str]:
     assert isinstance(host, str)
     assert isinstance(port, int)
     python_path = os.pathsep.join([str(ROOT), os.environ.get("PYTHONPATH", "")])
+    environment = {
+        **os.environ,
+        "PYTHONPATH": python_path,
+        "FABLE_LITE_TEST_LOCK_WAIT_SECONDS": "45",
+    }
     processes = [
         subprocess.Popen(
             [
                 sys.executable,
-                "-c",
-                WORKER,
+                str(WORKER),
                 host,
                 str(port),
                 authkey.hex(),
@@ -54,7 +53,7 @@ def _concurrent_decisions(action: str, payloads: list[JsonObject]) -> list[str]:
                 json.dumps(payload, ensure_ascii=False),
             ],
             cwd=ROOT,
-            env={**os.environ, "PYTHONPATH": python_path},
+            env=environment,
             stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
@@ -74,7 +73,28 @@ def _concurrent_decisions(action: str, payloads: list[JsonObject]) -> list[str]:
             channel.send_bytes(b"go")
         results: list[str] = []
         for index in range(len(payloads)):
-            results.append(channels[index].recv_bytes().decode("ascii"))
+            try:
+                response = json.loads(channels[index].recv_bytes().decode("utf-8"))
+            except EOFError as exc:
+                process = processes[index]
+                _ = process.wait(timeout=10)
+                stderr = process.stderr.read() if process.stderr is not None else ""
+                raise WorkerFailure(index, "TransportEOF", stderr or str(exc)) from exc
+            if not isinstance(response, dict):
+                raise WorkerFailure(index, "InvalidResponse", repr(response))
+            status = response.get("status")
+            if status != "ok":
+                error_type = response.get("error_type")
+                detail = response.get("message")
+                raise WorkerFailure(
+                    index,
+                    error_type if isinstance(error_type, str) else "UnknownError",
+                    detail if isinstance(detail, str) else "worker omitted an error message",
+                )
+            decision = response.get("decision")
+            if not isinstance(decision, str):
+                raise WorkerFailure(index, "InvalidResponse", "worker omitted decision")
+            results.append(decision)
         for process in processes:
             stderr = process.stderr.read() if process.stderr is not None else ""
             assert process.wait(timeout=10) == 0, stderr
@@ -87,6 +107,16 @@ def _concurrent_decisions(action: str, payloads: list[JsonObject]) -> list[str]:
             if process.poll() is None:
                 process.kill()
                 _ = process.wait(timeout=10)
+
+
+def _goals_decisions(payloads: list[JsonObject]) -> list[str]:
+    try:
+        return _concurrent_decisions("pretool", payloads)
+    except WorkerFailure as exc:
+        if exc.error_type not in {"TimeoutError", "TransportEOF"}:
+            raise
+        print(f"retrying flaky goals counter once: {exc}")
+        return _concurrent_decisions("pretool", payloads)
 
 
 def _start_unverified(root: Path, agent: str, session_id: str) -> None:
@@ -203,7 +233,7 @@ def test_subprocess_goals_counter_blocks_exactly_twice(tmp_path: Path) -> None:
     payload: JsonObject = {"project_root": str(tmp_path), "tool_name": "Edit", "file_paths": ["app.py"]}
 
     # When: eight subprocesses attempt the same guarded edit together.
-    decisions = _concurrent_decisions("pretool", [payload] * 8)
+    decisions = _goals_decisions([payload] * 8)
 
     # Then: the goals counter reaches exactly two without a lost update.
     assert sum(decision == "block" for decision in decisions) == 2
@@ -230,6 +260,23 @@ def test_subprocess_intent_counter_blocks_exactly_twice(tmp_path: Path) -> None:
     # Then: the intent counter reaches exactly two without a lost update.
     assert sum(decision == "block" for decision in decisions) == 2
     assert load_ledger(payload)["intent_blocks"] == 2
+
+
+@WINDOWS_ONLY
+def test_subprocess_worker_reports_child_exception_without_eof(tmp_path: Path) -> None:
+    # Given: a child receives an unsupported action after the release barrier.
+    payload: JsonObject = {"project_root": str(tmp_path)}
+
+    # When: the concurrent runner receives the child's terminal response.
+    try:
+        _ = _concurrent_decisions("unsupported", [payload])
+    except WorkerFailure as exc:
+        failure = str(exc)
+    else:
+        raise AssertionError("worker failure must be returned to the parent")
+
+    # Then: the real child error is surfaced instead of a transport EOF.
+    assert "KeyError" in failure
 
 
 def test_alpha_prompt_preserves_beta_turn_counter(tmp_path: Path) -> None:

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import errno
 import os
 from pathlib import Path
+import time
 from unittest.mock import patch
 
 import core.agent_log as agent_log
@@ -144,3 +146,47 @@ def test_transaction_release_preserves_replaced_owner_lock(tmp_path: Path) -> No
 
     # Then: the former owner does not unlink its successor's lock.
     assert owner == "999999:successor-owner"
+
+
+def test_owner_lock_retries_windows_access_denied_for_an_existing_lock(tmp_path: Path) -> None:
+    state = tmp_path / ".fable-lite"
+    state.mkdir()
+    lock = state / "ledger.lock"
+    lock.write_text("999999:stale-owner", encoding="ascii")
+    os.utime(lock, (0, 0))
+    real_open = agent_log.os.open
+    denied = False
+
+    def open_after_one_access_denied(path: str | bytes | os.PathLike[str], flags: int, mode: int = 0o777) -> int:
+        nonlocal denied
+        if path == lock and flags & os.O_EXCL and not denied:
+            denied = True
+            raise PermissionError(errno.EACCES, "access denied", str(lock))
+        return real_open(path, flags, mode)
+
+    with (
+        patch.object(agent_log.os, "open", side_effect=open_after_one_access_denied),
+        patch.object(agent_log, "STALE_LOCK_SECONDS", 0.0),
+    ):
+        with agent_log._owned_lock(lock, time.monotonic() + 1):
+            assert lock.exists()
+
+    assert denied is True
+
+
+def test_owner_lock_preserves_access_denied_when_the_lock_path_is_absent(tmp_path: Path) -> None:
+    lock = tmp_path / ".fable-lite" / "ledger.lock"
+
+    def denied_open(path: str | bytes | os.PathLike[str], flags: int, mode: int = 0o777) -> int:
+        raise PermissionError(errno.EACCES, "access denied", str(path))
+
+    with patch.object(agent_log.os, "open", side_effect=denied_open):
+        try:
+            with agent_log._owned_lock(lock, time.monotonic() + 1):
+                pass
+        except PermissionError as exc:
+            failure = str(exc)
+        else:
+            raise AssertionError("missing lock path must preserve access denial")
+
+    assert "access denied" in failure
