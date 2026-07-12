@@ -60,6 +60,13 @@ class ProvenanceConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class SnapshotScanOptions:
+    previous: Snapshot | None = None
+    windows: bool | None = None
+    force_paths: frozenset[str] = frozenset()
+
+
+@dataclass(frozen=True, slots=True)
 class ManifestEntry:
     path: str
     canonical_key: str
@@ -94,6 +101,7 @@ class Snapshot:
     generated_patterns: tuple[str, ...]
     is_casefolded: bool = False
     platform: str = ""
+    full_reconciled_at: str | None = None
 
     @property
     def incomplete(self) -> bool:

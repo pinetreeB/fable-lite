@@ -88,6 +88,10 @@ def _scope_policy_id(context: SnapshotBuildContext) -> str:
     return _digest_text(encoded)
 
 
+def scope_policy_id(context: SnapshotBuildContext) -> str:
+    return _scope_policy_id(context)
+
+
 def _digest_text(value: str) -> str:
     digest = hashlib.blake2b(value.encode("utf-8", "surrogateescape"), digest_size=32)
     return f"blake2b-256:{digest.hexdigest()}"

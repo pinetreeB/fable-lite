@@ -21,7 +21,7 @@ from .provenance_policy import (
     normalize_relative_path,
     should_descend,
 )
-from .provenance_snapshot import SnapshotBuildContext, build_snapshot
+from .provenance_snapshot import SnapshotBuildContext, build_snapshot, scope_policy_id
 from .provenance_types import (
     ChangeOperation,
     EntryKind,
@@ -31,6 +31,7 @@ from .provenance_types import (
     ScanIssue,
     ScanResult,
     Snapshot,
+    SnapshotScanOptions,
 )
 
 REPARSE_ATTRIBUTE: Final = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
@@ -44,11 +45,14 @@ __all__ = (
     "ScanIssue",
     "ScanResult",
     "Snapshot",
+    "SnapshotScanOptions",
     "calculate_net_delta",
     "canonical_manifest_key",
     "load_provenance_config",
     "normalize_relative_path",
     "snapshot_workspace",
+    "snapshot_workspace_with_options",
+    "workspace_scope_policy_id",
 )
 
 
@@ -57,6 +61,7 @@ class _ScanContext:
     root: Path
     config: ProvenanceConfig
     windows: bool
+    force_paths: frozenset[str]
     previous_entries: dict[str, ManifestEntry]
     previous_reparse_observations: dict[str, ManifestEntry]
 
@@ -90,12 +95,23 @@ def snapshot_workspace(
     previous: Snapshot | None = None,
     windows: bool | None = None,
 ) -> Snapshot:
+    return snapshot_workspace_with_options(
+        root,
+        SnapshotScanOptions(previous=previous, windows=windows),
+    )
+
+
+def snapshot_workspace_with_options(root: Path, options: SnapshotScanOptions) -> Snapshot:
     absolute_root = Path(os.path.abspath(root))
-    previous_entries, previous_reparse_observations = _previous_state(previous, windows)
+    previous_entries, previous_reparse_observations = _previous_state(
+        options.previous,
+        options.windows,
+    )
     context = _ScanContext(
         root=absolute_root,
         config=load_provenance_config(absolute_root),
-        windows=os.name == "nt" if windows is None else windows,
+        windows=os.name == "nt" if options.windows is None else options.windows,
+        force_paths=options.force_paths,
         previous_entries=previous_entries,
         previous_reparse_observations=previous_reparse_observations,
     )
@@ -103,6 +119,18 @@ def snapshot_workspace(
         SnapshotBuildContext(context.root, context.config, context.windows, os.name),
         _scan(context),
     )
+
+
+def workspace_scope_policy_id(root: Path, windows: bool | None = None) -> str:
+    absolute_root = Path(os.path.abspath(root))
+    casefolded = os.name == "nt" if windows is None else windows
+    context = SnapshotBuildContext(
+        absolute_root,
+        load_provenance_config(absolute_root),
+        casefolded,
+        os.name,
+    )
+    return scope_policy_id(context)
 
 
 def _scan(context: _ScanContext) -> ScanResult:
@@ -155,7 +183,11 @@ def _visit_path(
     if not is_path_in_scope(relative, context.config):
         return
     if stat.S_ISREG(metadata.st_mode):
-        previous = context.previous_entries.get(info.key)
+        previous = (
+            None
+            if info.relative in context.force_paths
+            else context.previous_entries.get(info.key)
+        )
         _append_capture(capture_regular(_capture_request(info, previous)), state)
         return
     state.issues.append(ScanIssue(relative, "special_file"))
