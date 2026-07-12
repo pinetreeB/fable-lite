@@ -1,16 +1,89 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import json
+import os
 from pathlib import Path
-import runpy
+import subprocess
 import sys
+from typing import Final
+
+
+REAPER_ENABLE_ENV: Final = "FABLE_LITE_CODEX_REAPER"
+REAPER_LOG_ENV: Final = "FABLE_LITE_CODEX_REAPER_LOG"
+REAPER_TRUE_VALUES: Final = frozenset({"1", "true", "yes", "on"})
+REAPER_TIMEOUT_SECONDS: Final = 8
 
 
 def _fail_open(message: str) -> int:
-    data = json.dumps({"systemMessage": f"fable-lite fail-open: {message}"}, ensure_ascii=False)
+    data = json.dumps(
+        {"systemMessage": f"fable-lite fail-open: {message}"}, ensure_ascii=False
+    )
     _ = sys.stdout.buffer.write(data.encode("utf-8"))
     _ = sys.stdout.buffer.write(b"\n")
     return 0
+
+
+def _append_reaper_launcher_error(
+    log_path: Path, error_type: str, message: str
+) -> None:
+    entry = {
+        "timestamp": datetime.now(tz=UTC).isoformat(),
+        "event": "codex_process_reaper",
+        "status": "error",
+        "error_type": error_type,
+        "error": message[:500],
+    }
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8", newline="\n") as handle:
+            _ = handle.write(
+                json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n"
+            )
+    except OSError:
+        return
+
+
+def _run_process_reaper(repo_root: Path, project_root: str) -> None:
+    if os.name != "nt":
+        return
+    if (
+        os.environ.get(REAPER_ENABLE_ENV, "").strip().casefold()
+        not in REAPER_TRUE_VALUES
+    ):
+        return
+    log_path = Path(
+        os.environ.get(
+            REAPER_LOG_ENV,
+            str(
+                Path(project_root).resolve()
+                / ".fable-lite"
+                / "codex-process-reaper.log"
+            ),
+        )
+    )
+    env = os.environ.copy()
+    env[REAPER_LOG_ENV] = str(log_path)
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-m", "contrib.codex_process_reaper.reaper"],
+            check=False,
+            cwd=repo_root,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=env,
+            timeout=REAPER_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        _append_reaper_launcher_error(log_path, type(exc).__name__, str(exc))
+        return
+    if completed.returncode != 0:
+        _append_reaper_launcher_error(
+            log_path,
+            "ReaperExitError",
+            f"reaper exited with code {completed.returncode}",
+        )
 
 
 def main() -> int:
@@ -18,22 +91,29 @@ def main() -> int:
         root = Path(__file__).resolve().parents[2]
         if str(root) not in sys.path:
             sys.path.insert(0, str(root))
-        common = runpy.run_path(str(Path(__file__).with_name("common.py")))
-        payload = common["read_payload"]()
+        from adapters.codex_cli.common import (
+            emit,
+            last_assistant_text,
+            project_root,
+            read_payload,
+        )
         from core.verify_state import evaluate_stop
 
+        payload = read_payload()
+        project_root_value = project_root(payload)
         result = evaluate_stop(
             {
-                "project_root": common["project_root"](payload),
+                "project_root": project_root_value,
                 "stop_hook_active": payload.get("stop_hook_active") is True,
-                "assistant_text": common["last_assistant_text"](payload),
+                "assistant_text": last_assistant_text(payload),
             }
         )
         if result["decision"] == "block":
-            return common["emit"]({"decision": "block", "reason": str(result["reason"])})
+            return emit({"decision": "block", "reason": str(result["reason"])})
         message = str(result.get("message", "fable-lite Stop gate allow."))
-        return common["emit"]({"systemMessage": message})
-    except Exception as exc:
+        _run_process_reaper(root, project_root_value)
+        return emit({"systemMessage": message})
+    except Exception as exc:  # noqa: BLE001  # noqa: BROAD_EXCEPT_OK
         return _fail_open(str(exc))
 
 
