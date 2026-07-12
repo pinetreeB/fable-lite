@@ -1,0 +1,56 @@
+{
+  "canonical_fields": [
+    "host",
+    "agent",
+    "session_id",
+    "turn_id",
+    "invocation_id",
+    "phase",
+    "tool_family_hint",
+    "candidate_paths",
+    "command_hint",
+    "success",
+    "evidence"
+  ],
+  "expected": {
+    "agent": "conformance-agent",
+    "session_id": "conformance-session",
+    "turn_id": "conformance-turn",
+    "invocation_id": "conformance-edit",
+    "phase": "post_tool",
+    "tool_family_hint": "edit",
+    "candidate_paths": ["src/app.py"],
+    "command_hint": "",
+    "success": true,
+    "evidence": "updated"
+  },
+  "host_payloads": {
+    "claude_code": {
+      "agent": "conformance-agent",
+      "session_id": "conformance-session",
+      "turn_id": "conformance-turn",
+      "tool_use_id": "conformance-edit",
+      "tool_input": {"file_path": "src\\app.py"},
+      "tool_response": {"success": true, "stdout": "updated"}
+    },
+    "codex_cli": {
+      "agent": "conformance-agent",
+      "session_id": "conformance-session",
+      "turn_id": "conformance-turn",
+      "tool_use_id": "conformance-edit",
+      "tool_input": {"file_path": "src\\app.py"},
+      "tool_response": {"success": true, "stdout": "updated"}
+    },
+    "antigravity": {
+      "agent": "conformance-agent",
+      "session_id": "conformance-session",
+      "turn_id": "conformance-turn",
+      "tool_use_id": "conformance-edit",
+      "metadata": {
+        "tool_name": "replace_file_content",
+        "tool_input": {"TargetFile": "src\\app.py"}
+      },
+      "tool_response": {"success": true, "llmContent": "updated"}
+    }
+  }
+}

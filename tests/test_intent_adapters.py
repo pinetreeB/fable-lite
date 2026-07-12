@@ -146,7 +146,7 @@ def test_codex_intent_gate_records_prompt_and_blocks_apply_patch(tmp_path: Path)
             "cwd": str(tmp_path),
             "tool_name": "apply_patch",
             "tool_input": {"command": "*** Begin Patch\n*** Add File: app.py\n+print('ok')\n*** End Patch\n"},
-            "session_id": "codex-intent",
+            "session_id": "s-intent",
         },
     )
     ledger = read_ledger(tmp_path)

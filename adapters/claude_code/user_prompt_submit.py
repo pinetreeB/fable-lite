@@ -71,17 +71,20 @@ def main() -> int:
         root = Path(__file__).resolve().parents[2]
         if str(root) not in sys.path:
             sys.path.insert(0, str(root))
-        from adapters.claude_code.common import emit, project_root, read_payload
+        from adapters.claude_code.common import canonical_invocation, emit, project_root, read_payload
         from adapters.intent_command import intent_set_command
         payload = read_payload()
         from core.ambiguity import evaluate_ambiguity
         from core.classify import classify_prompt
         from core.intent import clear_intent
         from core.ledger import record_event
+        from core.adapter_observation import start_turn
 
         prompt_value = payload.get("prompt")
         prompt = prompt_value if isinstance(prompt_value, str) else ""
         root_value = project_root(payload)
+        invocation = canonical_invocation(payload, "turn_start", "other", [], "", True, "")
+        observation = start_turn(Path(root_value), invocation)
         _ = clear_intent(root_value)
         result = classify_prompt({"prompt": prompt})
         command_template = intent_set_command(__file__)
@@ -100,6 +103,13 @@ def main() -> int:
             {
                 "project_root": root_value,
                 "event": "prompt",
+                "host": invocation.host,
+                "agent": invocation.agent,
+                "session_id": invocation.session_id,
+                "turn_id": invocation.turn_id,
+                "baseline_snapshot_id": observation.baseline_snapshot_id,
+                "current_snapshot_id": observation.snapshot_id,
+                "provenance_incomplete": observation.incomplete,
                 "task_mode": result["mode"],
                 "prompt": prompt,
                 "packs": packs,

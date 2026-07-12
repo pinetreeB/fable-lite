@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import sys
 import json
-import os
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from pathlib import Path
-from typing import TypeGuard, cast
+from typing import cast
 
 # Add project root to sys.path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -30,78 +29,53 @@ def read_payload() -> dict[str, object]:
         raise ValueError("payload must be a JSON object")
     return dict(cast(Mapping[str, object], raw))
 
+
+def _common():
+    from adapters.antigravity import hook_common
+
+    return hook_common
+
+
 def emit(payload: Mapping[str, object]) -> int:
     data = json.dumps(payload, ensure_ascii=False)
     _ = sys.stdout.buffer.write(data.encode("utf-8"))
     _ = sys.stdout.buffer.write(b"\n")
     return 0
 
+
 def fail_open(msg: str) -> int:
     return emit({"decision": "allow", "systemMessage": f"fable-lite fail-open: {msg}"})
-
-def _mapping(value: object) -> Mapping[str, object]:
-    return cast(Mapping[str, object], value) if isinstance(value, Mapping) else {}
-
-
-def _mapping_sequence(value: object) -> list[Mapping[str, object]]:
-    if not isinstance(value, Sequence) or isinstance(value, str | bytes):
-        return []
-    return [cast(Mapping[str, object], item) for item in value if isinstance(item, Mapping)]
-
-
-def _string_sequence(value: object) -> TypeGuard[Sequence[str]]:
-    return (
-        isinstance(value, Sequence)
-        and not isinstance(value, str | bytes)
-        and all(isinstance(item, str) for item in value)
-    )
-
-
-def _get_project_root(payload: Mapping[str, object]) -> str:
-    cwd = payload.get("cwd") or os.getcwd()
-    return str(cwd)
-
-def _string_list(value: object) -> list[str]:
-    if not _string_sequence(value):
-        return []
-    return [item for item in value if item]
-
-def _packs_with_intent(packs_value: object, intent_required: bool) -> list[str]:
-    packs = _string_list(packs_value)
-    if intent_required and "intent-interview" not in packs:
-        packs.append("intent-interview")
-    return packs
-
-def _append_intent_context(lines: list[str], intent_required: bool, intent_command: str) -> None:
-    if not intent_required:
-        return
-    lines.extend([
-        "의도 확인 필요: 수정 전 `확인질문 N:` 형식으로 목표/범위/비목표를 최대 3개만 물어보세요.",
-        f"확인되면 정확히 이 명령을 그대로 실행하세요: `{intent_command}`",
-        "저장소 루트에서 직접 실행 중이면 `python -m fable_lite intent set ...`도 가능하지만, 플러그인 사용 중에는 위 절대경로 명령을 우선하세요.",
-        "사용자가 묻지 말라고 한 경우에만 합리적 가정을 기록하고 명령 끝에 `--assumed`를 붙이세요.",
-    ])
 
 def handle_before_tool(payload: Mapping[str, object]) -> int:
     from adapters.antigravity.tool_io import extract_command, extract_paths_from_input, extract_tool_info
     from adapters.intent_command import intent_set_command
-    from core.contract import evaluate_pretool_contract
+    from core.adapter_observation import begin_invocation, resolve_active_invocation
+    from core.contract import EDIT_TOOLS, SHELL_TOOLS, evaluate_pretool_contract
 
+    common = _common()
     tool_name, tool_input = extract_tool_info(payload)
     paths = extract_paths_from_input(tool_input)
     cmd = extract_command(tool_input)
+    family = "edit" if tool_name in EDIT_TOOLS else "shell" if tool_name in SHELL_TOOLS else "other"
+    invocation = common.canonical_invocation(payload, "pre_tool", family, paths, cmd, False, "")
+    invocation = resolve_active_invocation(Path(common.project_root(payload)), invocation)
 
     result = evaluate_pretool_contract({
-        "project_root": _get_project_root(payload),
+        "project_root": common.project_root(payload),
         "tool_name": tool_name,
         "file_paths": paths,
         "command": cmd,
         "prompt": json.dumps(tool_input, ensure_ascii=False),
-        "intent_set_command": intent_set_command(__file__)
+        "intent_set_command": intent_set_command(__file__),
+        "host": invocation.host,
+        "agent": invocation.agent,
+        "session_id": invocation.session_id,
+        "turn_id": invocation.turn_id,
     })
     
     if result.get("decision") == "block":
         return emit({"decision": "block", "reason": str(result.get("reason", ""))})
+    _ = begin_invocation(Path(common.project_root(payload)), invocation)
     return emit({"decision": "allow"})
 
 def handle_after_tool(payload: Mapping[str, object]) -> int:
@@ -112,24 +86,36 @@ def handle_after_tool(payload: Mapping[str, object]) -> int:
         verification_result,
     )
 
-    root = _get_project_root(payload)
+    common = _common()
+    root = common.project_root(payload)
     tool_name, tool_input = extract_tool_info(payload)
 
+    from core.adapter_observation import observe_post_tool, resolve_active_invocation, verification_covers
     from core.classify import classify_prompt
     from core.contract import EDIT_TOOLS, SHELL_TOOLS
-    from core.ledger import classify_change_kind, load_ledger, record_event
+    from core.ledger import JsonObject, load_ledger, record_event
     from core.scope_guard import evaluate_scope
     from core.verification import is_verification_command
 
-    if tool_name in EDIT_TOOLS:
-        paths = extract_paths_from_input(tool_input)
-        for path in paths:
-            _ = record_event({
-                "project_root": root,
-                "event": "change",
-                "path": path,
-                "kind": classify_change_kind(path)
-            })
+    family = "edit" if tool_name in EDIT_TOOLS else "shell" if tool_name in SHELL_TOOLS else "other"
+    if family != "other":
+        command = extract_command(tool_input)
+        success, evidence = verification_result(payload)
+        invocation = common.canonical_invocation(
+            payload,
+            "post_tool",
+            family,
+            extract_paths_from_input(tool_input),
+            command,
+            success,
+            evidence,
+        )
+        invocation = resolve_active_invocation(Path(root), invocation)
+        observation = observe_post_tool(Path(root), invocation)
+        verification_command = family == "shell" and is_verification_command(command)
+        if observation.incomplete and not verification_command:
+            return emit({"decision": "allow", "systemMessage": "fable-lite provenance incomplete; fail-open observation."})
+        paths = list(observation.changed_paths)
         ledger = load_ledger({"project_root": root})
         prompt = ledger.get("prompt", "")
         if not isinstance(prompt, str):
@@ -143,52 +129,44 @@ def handle_after_tool(payload: Mapping[str, object]) -> int:
             "changed_files": paths
         })
         if scope.get("decision") == "warn":
-            _ = record_event({"project_root": root, "event": "scope_warning", "message": scope.get("message")})
+            _ = record_event({
+                "project_root": root,
+                "event": "scope_warning",
+                "host": invocation.host,
+                "agent": invocation.agent,
+                "session_id": invocation.session_id,
+                "turn_id": invocation.turn_id,
+                "message": scope.get("message"),
+            })
             return emit({
                 "decision": "allow",
                 "systemMessage": str(scope.get("message")),
                 "hookSpecificOutput": {"additionalContext": str(scope.get("message"))}
             })
-        return emit({"decision": "allow", "systemMessage": f"fable-lite 원장: 변경 {len(paths)}건 기록."})
-        
-    if tool_name in SHELL_TOOLS:
-        cmd = extract_command(tool_input)
-        if is_verification_command(cmd):
-            success, evidence = verification_result(payload)
-            _ = record_event({
+        if family == "edit":
+            return emit({"decision": "allow", "systemMessage": f"fable-lite provenance: observed {len(paths)} change(s)."})
+        if verification_command:
+            covers = verification_covers(Path(root), invocation)
+            verification: JsonObject = {
                 "project_root": root,
                 "event": "verification",
-                "command": cmd,
-                "success": success,
-                "evidence": evidence
+                "host": invocation.host,
+                "agent": invocation.agent,
+                "session_id": invocation.session_id,
+                "turn_id": invocation.turn_id,
+                "invocation_id": invocation.invocation_id,
+                "command": command,
+                "success": invocation.success,
+                "evidence": invocation.evidence,
+            }
+            if covers is not None:
+                verification["covers"] = covers
+            _ = record_event({
+                **verification,
             })
             return emit({"decision": "allow", "systemMessage": "fable-lite 원장: 검증 기록."})
-            
+        return emit({"decision": "allow", "systemMessage": f"fable-lite provenance: observed {len(paths)} change(s)."})
     return emit({"decision": "allow"})
-
-def handle_after_agent(payload: Mapping[str, object]) -> int:
-    from core.verify_state import evaluate_stop
-
-    root = _get_project_root(payload)
-
-    assistant_text = ""
-    req = _mapping(payload.get("llm_request"))
-    for msg in reversed(_mapping_sequence(req.get("messages"))):
-        if msg.get("role") in ["assistant", "model"]:
-            assistant_text = str(msg.get("content", ""))
-            break
-                
-    # OmA doesn't have stop_hook_active natively, so assume False for normal evaluation
-    result = evaluate_stop({
-        "project_root": root,
-        "stop_hook_active": False,
-        "assistant_text": assistant_text
-    })
-    
-    if result.get("decision") == "block":
-        return emit({"decision": "block", "reason": str(result.get("reason", ""))})
-        
-    return emit({"decision": "allow", "systemMessage": str(result.get("message", "fable-lite Stop gate allow."))})
 
 def handle_before_model(payload: Mapping[str, object]) -> int:
     from adapters.intent_command import intent_set_command
@@ -196,33 +174,44 @@ def handle_before_model(payload: Mapping[str, object]) -> int:
     from core.classify import classify_prompt
     from core.intent import clear_intent
     from core.ledger import record_event
+    from core.adapter_observation import start_turn
 
+    common = _common()
     prompt_value = payload.get("prompt", "")
     if not isinstance(prompt_value, str):
         prompt_value = ""
     
     if not prompt_value:
-        req = _mapping(payload.get("llm_request"))
-        for msg in reversed(_mapping_sequence(req.get("messages"))):
+        req = common.mapping(payload.get("llm_request"))
+        for msg in reversed(common.mapping_sequence(req.get("messages"))):
             if msg.get("role") == "user":
                 prompt_value = str(msg.get("content", ""))
                 break
 
-    root = _get_project_root(payload)
+    root = common.project_root(payload)
+    invocation = common.canonical_invocation(payload, "turn_start", "other", [], "", True, "")
+    observation = start_turn(Path(root), invocation)
     _ = clear_intent(root)
     result = classify_prompt({"prompt": prompt_value})
     ambiguity = evaluate_ambiguity({
         "project_root": root,
         "prompt": prompt_value,
-        "requested_paths": _string_list(result.get("requested_paths")),
+        "requested_paths": common.string_list(result.get("requested_paths")),
     })
     intent_required = ambiguity.get("ambiguous") is True
     command_template = intent_set_command(__file__)
-    packs = _packs_with_intent(result.get("packs", []), intent_required)
+    packs = common.packs_with_intent(result.get("packs", []), intent_required)
     
     _ = record_event({
         "project_root": root,
         "event": "prompt",
+        "host": invocation.host,
+        "agent": invocation.agent,
+        "session_id": invocation.session_id,
+        "turn_id": invocation.turn_id,
+        "baseline_snapshot_id": observation.baseline_snapshot_id,
+        "current_snapshot_id": observation.snapshot_id,
+        "provenance_incomplete": observation.incomplete,
         "task_mode": result.get("mode", "quick"),
         "prompt": prompt_value,
         "packs": packs,
@@ -245,7 +234,7 @@ def handle_before_model(payload: Mapping[str, object]) -> int:
         lines.append("렌더/실행 산출물은 RUN→OBSERVE→FIX→RE-RUN 증거 없이는 완료하지 마세요.")
     if result.get("needs_goals"):
         lines.append("2+ 스토리 작업입니다. goals 체크포인트를 만들거나 사용자에게 명시 확인을 받으세요.")
-    _append_intent_context(lines, intent_required, command_template)
+    common.append_intent_context(lines, intent_required, command_template)
         
     return emit({
         "decision": "allow",
@@ -253,6 +242,14 @@ def handle_before_model(payload: Mapping[str, object]) -> int:
             "additionalContext": "\n".join(lines)
         }
     })
+
+
+def handle_after_agent(payload: Mapping[str, object]) -> int:
+    from core.adapter_observation import finish_turn, resolve_active_invocation
+    from core.verify_state import evaluate_stop
+
+    _ = (finish_turn, resolve_active_invocation, evaluate_stop)
+    return _common().handle_after_agent(payload)
 
 def main() -> int:
     try:

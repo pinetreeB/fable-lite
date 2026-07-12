@@ -12,17 +12,22 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+from typing import TypeAlias
 
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+reconfigure = getattr(sys.stdout, "reconfigure", None)
+if callable(reconfigure):
+    reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ADAPT = ROOT / "adapters" / "claude_code"
 
+JsonScalar: TypeAlias = str | int | bool | None
+JsonValue: TypeAlias = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
+JsonObject: TypeAlias = dict[str, JsonValue]
 results: list[tuple[bool, str]] = []
 
 
-def run_hook(script: str, payload: dict) -> dict:
+def run_hook(script: str, payload: JsonObject) -> JsonObject:
     proc = subprocess.run(
         [sys.executable, str(ADAPT / script)],
         input=json.dumps(payload),
@@ -43,7 +48,8 @@ def check(name: str, cond: bool, detail: str = "") -> None:
 
 def make_transcript(proj: str, assistant_text: str) -> str:
     """assistant 레코드 1개를 담은 JSONL transcript를 만들어 경로 반환."""
-    tp = os.path.join(proj, "transcript.jsonl")
+    project = pathlib.Path(proj)
+    tp = str(project.parent / f"{project.name}-transcript.jsonl")
     rec = {"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": assistant_text}]}}
     pathlib.Path(tp).write_text(json.dumps(rec, ensure_ascii=False) + "\n", encoding="utf-8")
     return tp
@@ -62,6 +68,7 @@ def main() -> int:
 
     # E2E-2: N1 미준수 → Stop 차단, 준수 → 통과 (AC3)
     # v1.1.3: N1 마커는 파일 변경이 있는 턴에만 요구 — 변경 이벤트를 먼저 기록한다.
+    pathlib.Path(proj, "app.py").write_text("n1 probe\n", encoding="utf-8")
     _ = run_hook("post_tool_use.py", {"hook_event_name": "PostToolUse", "tool_name": "Edit", "cwd": proj,
                                       "tool_input": {"file_path": "app.py"},
                                       "tool_response": {"filePath": "app.py", "success": True}})
@@ -95,7 +102,9 @@ def main() -> int:
     r = run_hook("post_tool_use.py", {"hook_event_name": "PostToolUse", "tool_name": "Edit", "cwd": proj,
                                       "tool_input": {"file_path": rdm, "new_string": "y"},
                                       "tool_response": {"filePath": rdm, "success": True}})
-    check("AC4 N3 범위 이탈 경고", "범위 이탈" in json.dumps(r, ensure_ascii=False), f"({r.get('systemMessage', '')[:30]})")
+    message = r.get("systemMessage")
+    detail = message[:30] if isinstance(message, str) else ""
+    check("AC4 N3 범위 이탈 경고", "범위 이탈" in json.dumps(r, ensure_ascii=False), f"({detail})")
 
     # E2E-5: PostToolUse ledger 기록 — 정상 범위(파일명 요청) + 파일 기반 검증 (AC1)
     run_hook("user_prompt_submit.py", {"hook_event_name": "UserPromptSubmit", "cwd": proj, "prompt": "app.py 파일을 수정해줘"})

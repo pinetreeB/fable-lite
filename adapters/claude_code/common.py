@@ -5,7 +5,10 @@ import json
 import os
 from pathlib import Path
 import sys
-from typing import TypeAlias
+from typing import TYPE_CHECKING, TypeAlias
+
+if TYPE_CHECKING:
+    from core.adapter_observation import CanonicalInvocation
 
 JsonScalar: TypeAlias = str | int | bool | None
 JsonValue: TypeAlias = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
@@ -118,6 +121,38 @@ def tool_success(payload: Mapping[str, JsonValue]) -> bool:
     # 성공/실패를 알 수 없을 때 stdout 텍스트로 보수적 폴백 판정(core.verification 공유 로직,
     # claude_code·codex_cli·antigravity 3어댑터가 동일 기준을 쓴다 — v1 릴리스 심사 H2).
     return text_indicates_success(tool_output(payload))
+
+
+def canonical_invocation(
+    payload: Mapping[str, JsonValue],
+    phase: str,
+    tool_family_hint: str,
+    candidate_paths: list[str],
+    command_hint: str,
+    success: bool,
+    evidence: str,
+) -> CanonicalInvocation:
+    from core.adapter_observation import CanonicalInvocation
+
+    session_id = _string(payload.get("session_id")) or "default"
+    agent = _string(payload.get("agent")) or "claude"
+    turn_id = _string(payload.get("turn_id")) or f"turn:{session_id}"
+    invocation_id = _string(
+        payload.get("tool_use_id") or payload.get("invocation_id") or payload.get("tool_call_id")
+    ) or f"{phase}:{session_id}:{tool_family_hint}"
+    return CanonicalInvocation(
+        "claude_code",
+        agent,
+        session_id,
+        turn_id,
+        invocation_id,
+        phase,
+        tool_family_hint,
+        tuple(sorted({path.replace("\\", "/") for path in candidate_paths if path})),
+        command_hint,
+        success,
+        evidence,
+    )
 
 
 def transcript_last_assistant_text(payload: Mapping[str, JsonValue]) -> str:

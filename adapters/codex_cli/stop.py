@@ -92,22 +92,35 @@ def main() -> int:
         if str(root) not in sys.path:
             sys.path.insert(0, str(root))
         from adapters.codex_cli.common import (
+            canonical_invocation,
             emit,
             last_assistant_text,
             project_root,
             read_payload,
         )
+        from core.adapter_observation import finish_turn, resolve_active_invocation
         from core.verify_state import evaluate_stop
 
         payload = read_payload()
         project_root_value = project_root(payload)
-        result = evaluate_stop(
-            {
-                "project_root": project_root_value,
-                "stop_hook_active": payload.get("stop_hook_active") is True,
-                "assistant_text": last_assistant_text(payload),
-            }
-        )
+        invocation = canonical_invocation(payload, "stop", "other", [], "", True, "")
+        invocation = resolve_active_invocation(Path(project_root_value), invocation)
+        _ = finish_turn(Path(project_root_value), invocation)
+        stop_payload = {
+            "project_root": project_root_value,
+            "stop_hook_active": payload.get("stop_hook_active") is True,
+            "assistant_text": last_assistant_text(payload),
+        }
+        if isinstance(payload.get("agent"), str) and payload.get("agent"):
+            stop_payload.update(
+                {
+                    "host": invocation.host,
+                    "agent": invocation.agent,
+                    "session_id": invocation.session_id,
+                    "turn_id": invocation.turn_id,
+                }
+            )
+        result = evaluate_stop(stop_payload)
         if result["decision"] == "block":
             return emit({"decision": "block", "reason": str(result["reason"])})
         message = str(result.get("message", "fable-lite Stop gate allow."))

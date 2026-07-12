@@ -109,7 +109,17 @@ def _update_turn_after_event(turn: JsonObject, payload: Mapping[str, JsonValue])
     snapshot_id = payload.get("current_snapshot_id")
     if isinstance(snapshot_id, str) and snapshot_id:
         turn["current_snapshot_id"] = snapshot_id
+    incomplete = payload.get("provenance_incomplete")
+    if isinstance(incomplete, bool):
+        turn["provenance_incomplete"] = incomplete
+    if payload.get("provenance_mutation_capable") is True:
+        turn["provenance_mutation_capable"] = True
     event = payload.get("event")
+    if event == "invocation":
+        _remember_invocation(turn, payload)
+        return
+    if event == "observation":
+        return
     if event == "verification":
         covers = payload.get("covers")
         if isinstance(covers, dict):
@@ -130,6 +140,23 @@ def _update_turn_after_event(turn: JsonObject, payload: Mapping[str, JsonValue])
         turn["pending_change_ids"] = pending
     if turn.get("migration_mode") == "legacy_turn":
         turn["legacy_seq_less"] = False
+
+
+def _remember_invocation(turn: JsonObject, payload: Mapping[str, JsonValue]) -> None:
+    invocation_id = payload.get("invocation_id")
+    if not isinstance(invocation_id, str) or not invocation_id:
+        return
+    records = turn.get("invocations")
+    records = records if isinstance(records, dict) else {}
+    candidate_paths = payload.get("candidate_paths")
+    entry: JsonObject = {
+        "candidate_paths": candidate_paths if isinstance(candidate_paths, list) else [],
+    }
+    covers = payload.get("covers")
+    if isinstance(covers, dict):
+        entry["covers"] = covers
+    records[invocation_id] = entry
+    turn["invocations"] = records
 
 
 def _apply_path_projection(turn: JsonObject, payload: Mapping[str, JsonValue]) -> None:

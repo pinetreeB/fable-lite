@@ -98,6 +98,7 @@ def test_codex_pretool_blocks_high_risk_apply_patch_payload(tmp_path: Path) -> N
 def test_codex_posttool_records_apply_patch_file_and_scope_warning(tmp_path: Path) -> None:
     run_hook("user_prompt_submit.py", codex_prompt_payload(tmp_path, "app.py만 수정해줘"))
     patch = "*** Begin Patch\n*** Add File: settings.py\n+DEBUG=True\n*** End Patch\n"
+    _ = (tmp_path / "settings.py").write_text("DEBUG=True\n", encoding="utf-8")
     payload: HookPayload = {
         "cwd": str(tmp_path),
         "hook_event_name": "PostToolUse",
@@ -138,6 +139,7 @@ def test_codex_stop_uses_last_assistant_message_for_n1_gate(tmp_path: Path) -> N
     run_hook("user_prompt_submit.py", codex_prompt_payload(tmp_path, "버그 고쳐줘 안되는데요"))
     # v1.1.3: N1 마커는 파일 변경이 있는 턴에만 요구되므로 변경 이벤트를 먼저 기록한다.
     patch = "*** Begin Patch\n*** Update File: app.py\n+FIX=True\n*** End Patch\n"
+    _ = (tmp_path / "app.py").write_text("FIX=True\n", encoding="utf-8")
     run_hook(
         "post_tool_use.py",
         {

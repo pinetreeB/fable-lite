@@ -85,6 +85,7 @@ def test_oma_before_tool_uses_actual_top_level_tool_as_authority(tmp_path: Path)
 
 def test_oma_after_tool_records_file_changes_and_scope_warning(tmp_path: Path) -> None:
     run_oma_hook("BeforeModel", oma_prompt_payload(tmp_path, "app.py만 수정해줘"))
+    _ = (tmp_path / "settings.py").write_text("changed", encoding="utf-8")
     payload: HookPayload = {
         "cwd": str(tmp_path),
         "metadata": {
@@ -153,6 +154,7 @@ def test_oma_after_tool_records_failed_shell_verification_evidence(tmp_path: Pat
 def test_oma_after_agent_blocks_after_code_change_and_failed_verification(tmp_path: Path) -> None:
     # Given: a normal code task changed a file and its verification failed.
     run_oma_hook("BeforeModel", oma_prompt_payload(tmp_path, "app.py에 계산 페이지를 만들어줘"))
+    _ = (tmp_path / "app.py").write_text("changed", encoding="utf-8")
     run_oma_hook(
         "AfterTool",
         {
@@ -227,6 +229,7 @@ def test_oma_after_tool_classifies_verification_result_conservatively(
 def test_oma_after_agent_blocks_if_n1_missing(tmp_path: Path) -> None:
     run_oma_hook("BeforeModel", oma_prompt_payload(tmp_path, "버그 고쳐줘 안되는데요"))
     # v1.1.3: N1 마커는 파일 변경이 있는 턴에만 요구되므로 변경 이벤트를 먼저 기록한다.
+    _ = (tmp_path / "app.py").write_text("changed", encoding="utf-8")
     run_oma_hook(
         "AfterTool",
         {

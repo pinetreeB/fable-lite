@@ -17,11 +17,24 @@ def main() -> int:
         root = Path(__file__).resolve().parents[2]
         if str(root) not in sys.path:
             sys.path.insert(0, str(root))
-        from adapters.codex_cli.common import emit, project_root, read_payload, tool_command, tool_file_paths, tool_input
+        from adapters.codex_cli.common import canonical_invocation, emit, project_root, read_payload, tool_command, tool_file_paths, tool_input
         from adapters.intent_command import intent_set_command
         payload = read_payload()
-        from core.contract import evaluate_pretool_contract
+        from core.adapter_observation import begin_invocation, resolve_active_invocation
+        from core.contract import EDIT_TOOLS, SHELL_TOOLS, evaluate_pretool_contract
 
+        tool_name = payload.get("tool_name")
+        family = "edit" if tool_name in EDIT_TOOLS else "shell" if tool_name in SHELL_TOOLS else "other"
+        invocation = canonical_invocation(
+            payload,
+            "pre_tool",
+            family,
+            tool_file_paths(payload),
+            tool_command(payload),
+            False,
+            "",
+        )
+        invocation = resolve_active_invocation(Path(project_root(payload)), invocation)
         input_text = json.dumps(tool_input(payload), ensure_ascii=False)
         result = evaluate_pretool_contract(
             {
@@ -31,10 +44,15 @@ def main() -> int:
                 "command": tool_command(payload),
                 "prompt": input_text,
                 "intent_set_command": intent_set_command(__file__),
+                "host": invocation.host,
+                "agent": invocation.agent,
+                "session_id": invocation.session_id,
+                "turn_id": invocation.turn_id,
             }
         )
         if result["decision"] == "block":
             return emit({"decision": "block", "reason": str(result["reason"])})
+        _ = begin_invocation(Path(project_root(payload)), invocation)
         return emit({})
     except Exception as exc:
         return _fail_open(str(exc))

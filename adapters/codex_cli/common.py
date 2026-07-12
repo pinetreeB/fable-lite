@@ -6,7 +6,10 @@ import os
 from pathlib import Path
 import re
 import sys
-from typing import TypeAlias
+from typing import TYPE_CHECKING, TypeAlias
+
+if TYPE_CHECKING:
+    from core.adapter_observation import CanonicalInvocation
 
 JsonScalar: TypeAlias = str | int | bool | None
 JsonValue: TypeAlias = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
@@ -137,6 +140,38 @@ def tool_success(payload: Mapping[str, JsonValue]) -> bool:
     # exit_code/success 신호가 전혀 없을 때(v1 릴리스 심사 H2 — claude_code에만 있던
     # 텍스트 폴백이 codex_cli엔 없어 pytest 통과도 미검증으로 남던 문제) 공유 폴백 적용.
     return text_indicates_success(response_text or tool_output(payload))
+
+
+def canonical_invocation(
+    payload: Mapping[str, JsonValue],
+    phase: str,
+    tool_family_hint: str,
+    candidate_paths: list[str],
+    command_hint: str,
+    success: bool,
+    evidence: str,
+) -> CanonicalInvocation:
+    from core.adapter_observation import CanonicalInvocation
+
+    session_id = _string(payload.get("session_id")) or "default"
+    agent = _string(payload.get("agent")) or "codex"
+    turn_id = _string(payload.get("turn_id")) or f"turn:{session_id}"
+    invocation_id = _string(
+        payload.get("tool_use_id") or payload.get("invocation_id") or payload.get("tool_call_id")
+    ) or f"{phase}:{session_id}:{tool_family_hint}"
+    return CanonicalInvocation(
+        "codex_cli",
+        agent,
+        session_id,
+        turn_id,
+        invocation_id,
+        phase,
+        tool_family_hint,
+        tuple(sorted({path.replace("\\", "/") for path in candidate_paths if path})),
+        command_hint,
+        success,
+        evidence,
+    )
 
 
 def tool_response_text(payload: Mapping[str, JsonValue]) -> str:

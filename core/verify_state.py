@@ -138,6 +138,19 @@ def evaluate_without_io(
     changed = bool(_as_str_list(state.get("changed_files_seen")))
     verified = has_successful_verification(ledger, payload)
 
+    if (
+        state.get("provenance_incomplete") is True
+        and state.get("provenance_mutation_capable") is True
+    ):
+        return {
+            "decision": "block",
+            "reason": (
+                "fable-lite Stop gate: provenance 관측이 불완전하여 clean을 주장할 수 없습니다. "
+                "재시도 가능한 관측 또는 검증을 수행하세요. "
+                "/ Incomplete provenance cannot claim a clean mutation-capable turn."
+            ),
+        }
+
     if changed and _requires_investigation_compliance(state):
         compliance = check_investigation_compliance({"text": _assistant_text(payload)})
         if compliance["compliant"] is not True:

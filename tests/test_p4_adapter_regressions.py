@@ -9,7 +9,6 @@ from typing import TypeAlias
 from adapters.antigravity.tool_io import extract_tool_info, verification_result
 from adapters.claude_code.common import tool_success as claude_tool_success
 from adapters.codex_cli.common import tool_success as codex_tool_success
-from core.ledger import record_event
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -115,9 +114,12 @@ def test_antigravity_tool_identity_falls_through_when_top_level_name_is_missing(
 
 def test_codex_failed_verification_is_recorded_false_and_blocks_stop(tmp_path: Path) -> None:
     # Given: a deep Codex task records a code change and a failed verification.
-    base = {"project_root": str(tmp_path)}
-    record_event({**base, "event": "prompt", "task_mode": "deep", "prompt": "app.py 수정"})
+    _run_codex(
+        "user_prompt_submit.py",
+        {"cwd": str(tmp_path), "prompt": "app.py에 계산 페이지를 구현하고 테스트해줘", "session_id": "p4"},
+    )
     patch = "*** Begin Patch\n*** Update File: app.py\n+FIX=True\n*** End Patch\n"
+    _ = (tmp_path / "app.py").write_text("FIX=True\n", encoding="utf-8")
     _run_codex(
         "post_tool_use.py",
         {
@@ -125,6 +127,7 @@ def test_codex_failed_verification_is_recorded_false_and_blocks_stop(tmp_path: P
             "tool_name": "apply_patch",
             "tool_input": {"command": patch},
             "tool_response": "Exit code: 0\nOutput:\nSuccess. Updated app.py",
+            "session_id": "p4",
         },
     )
     _run_codex(
@@ -134,13 +137,14 @@ def test_codex_failed_verification_is_recorded_false_and_blocks_stop(tmp_path: P
             "tool_name": "Bash",
             "tool_input": {"command": "python -m pytest tests/test_app.py"},
             "tool_response": "Exit code: 1\nOutput:\nFAILED tests/test_app.py::test_value",
+            "session_id": "p4",
         },
     )
 
     # When: Codex attempts to stop.
     result = _run_codex(
         "stop.py",
-        {"cwd": str(tmp_path), "last_assistant_message": "검증을 수행했습니다."},
+        {"cwd": str(tmp_path), "last_assistant_message": "검증을 수행했습니다.", "session_id": "p4"},
     )
 
     # Then: failure is preserved and the unverified change blocks completion.
@@ -154,6 +158,7 @@ def test_antigravity_fresh_successful_verification_allows_after_agent(tmp_path: 
         "BeforeModel",
         {"cwd": str(tmp_path), "prompt": "app.py에 계산 페이지를 구현하고 테스트해줘"},
     )
+    _ = (tmp_path / "app.py").write_text("changed\n", encoding="utf-8")
     _run_antigravity(
         "AfterTool",
         {

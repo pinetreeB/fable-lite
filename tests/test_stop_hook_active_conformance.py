@@ -33,7 +33,7 @@ def _run_adapter(args: list[str], payload: JsonObject) -> JsonObject:
 
 
 def _write_claude_transcript(case_root: Path, assistant_text: str) -> Path:
-    transcript = case_root / "claude-transcript.jsonl"
+    transcript = case_root.parent / f"{case_root.name}-claude-transcript.jsonl"
     record = {
         "type": "assistant",
         "message": {

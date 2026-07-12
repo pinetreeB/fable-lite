@@ -63,7 +63,7 @@ def _write(path: Path, text: str) -> None:
 
 
 def _transcript(root: Path, text: str) -> Path:
-    path = root / "transcript.jsonl"
+    path = root.parent / f"{root.name}-transcript.jsonl"
     record = {"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": text}]}}
     _write(path, json.dumps(record, ensure_ascii=False) + "\n")
     return path
@@ -189,6 +189,7 @@ def _prb03() -> ProbeCheck:
 def _prb05() -> ProbeCheck:
     with _project() as root:
         _run_hook("user_prompt_submit.py", {"cwd": str(root), "prompt": "`userController.js`의 에러 핸들링을 고쳐줘."})
+        _write(root / "README.md", "scope probe\n")
         post = _run_hook("post_tool_use.py", {"cwd": str(root), "tool_name": "Edit", "tool_input": {"file_path": "README.md"}, "tool_response": {"filePath": "README.md", "success": True}})
         ledger = _ledger(root)
         warnings = ledger.get("scope_warnings")
@@ -260,6 +261,7 @@ def _prb15() -> ProbeCheck:
     # v1.1.3: N1 마커는 파일 변경이 있는 턴에만 요구 — 변경 이벤트를 기록한 뒤 마커 누락이 차단되는지 본다.
     with _project() as root:
         _run_hook("user_prompt_submit.py", {"cwd": str(root), "prompt": "버그 고쳐줘 안되는데요"})
+        _write(root / "app.py", "n1 probe\n")
         _run_hook("post_tool_use.py", {"cwd": str(root), "tool_name": "Edit", "tool_input": {"file_path": "app.py"}, "tool_response": {"filePath": "app.py", "success": True}})
         stop = _run_hook("stop.py", {"cwd": str(root), "transcript_path": str(_transcript(root, "원인은 설정입니다."))})
         return _decision(stop) == "block" and "조사 팩" in _message(stop), {"stop": _object(stop.get("json")), "ledger": _ledger(root)}
@@ -269,6 +271,7 @@ def _prb16() -> ProbeCheck:
     text = "가설 1: A\n가설 2: B\n가설 3: C\n증거: pytest pending\n기각: B"
     with _project() as root:
         _run_hook("user_prompt_submit.py", {"cwd": str(root), "prompt": "app.py 버그 고쳐줘"})
+        _write(root / "app.py", "counter probe\n")
         _run_hook("post_tool_use.py", {"cwd": str(root), "tool_name": "Edit", "tool_input": {"file_path": "app.py"}, "tool_response": {"filePath": "app.py", "success": True}})
         path = _transcript(root, text)
         decisions = [_gate_status(_run_hook("stop.py", {"cwd": str(root), "transcript_path": str(path)})) for _ in range(3)]

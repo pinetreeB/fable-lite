@@ -117,6 +117,7 @@ def test_external_self_located_stop_blocks_unverified_change(tmp_path: Path) -> 
             "session_id": "external-p4",
         },
     )
+    (target / "app.py").write_text("FIX=True\n", encoding="utf-8")
     run_installed(
         "PostToolUse",
         {

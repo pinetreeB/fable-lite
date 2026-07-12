@@ -41,6 +41,7 @@ def test_adapters_handle_realistic_claude_code_nested_payloads(tmp_path: Path) -
         "session_id": "s1",
     }
     prompt_result = run_hook("user_prompt_submit.py", prompt_payload)
+    _ = (tmp_path / "app.py").write_text("changed", encoding="utf-8")
 
     post_result = run_hook(
         "post_tool_use.py",
@@ -55,7 +56,7 @@ def test_adapters_handle_realistic_claude_code_nested_payloads(tmp_path: Path) -
     ledger = json.loads((tmp_path / ".fable-lite" / "ledger.json").read_text(encoding="utf-8"))
 
     assert "hookSpecificOutput" in prompt_result
-    assert "recorded 1 change(s)." in str(post_result["systemMessage"])
+    assert "observed 1 change(s)." in str(post_result["systemMessage"])
     assert ledger["changed_files_seen"] == ["app.py"]
 
 
@@ -129,7 +130,7 @@ def test_goals_nudge_and_n2_pretool_gate_use_persisted_prompt_state(tmp_path: Pa
 
 
 def _write_transcript(tmp_path: Path, text: str) -> Path:
-    transcript = tmp_path / "transcript.jsonl"
+    transcript = tmp_path.parent / f"{tmp_path.name}-transcript.jsonl"
     transcript.write_text(
         json.dumps(
             {
@@ -153,6 +154,7 @@ def test_stop_blocks_missing_n1_markers_when_investigation_turn_changed_files(tm
             "session_id": "s1",
         },
     )
+    _ = (tmp_path / "app.py").write_text("changed", encoding="utf-8")
     run_hook(
         "post_tool_use.py",
         {

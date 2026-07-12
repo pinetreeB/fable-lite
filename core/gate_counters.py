@@ -6,6 +6,7 @@ from typing import Final, TypeAlias
 from .agent_log import ledger_transaction
 from .intent import has_intent
 from .ledger import JsonValue, load_ledger, save_ledger, state_dir
+from .ledger_v2 import refresh_v1_projection
 from .verification_covers import active_turn
 
 
@@ -32,13 +33,13 @@ def block_goals_once(payload: Mapping[str, JsonValue]) -> Decision:
         ledger = load_ledger(payload)
         if not _gate_required(ledger, payload, "needs_goals") or goals_present:
             return {"decision": "allow", "message": "goals checkpoint is present"}
-        blocks = _counter_value(ledger, "goals_blocks")
+        blocks = _counter_value(ledger, payload, "goals_blocks")
         if blocks >= MAX_GOALS_BLOCKS:
             return {
                 "decision": "allow",
                 "message": "goals gate max 2 blocks reached; fail-open allow",
             }
-        ledger["goals_blocks"] = blocks + 1
+        _set_counter(ledger, payload, "goals_blocks", blocks + 1)
         save_ledger(payload, ledger)
     return {
         "decision": "block",
@@ -58,13 +59,13 @@ def block_intent_once(payload: Mapping[str, JsonValue], intent_command: str) -> 
         ledger = load_ledger(payload)
         if not _gate_required(ledger, payload, "intent_required") or intent_present:
             return {"decision": "allow", "message": "intent checkpoint is present"}
-        blocks = _counter_value(ledger, "intent_blocks")
+        blocks = _counter_value(ledger, payload, "intent_blocks")
         if blocks >= MAX_INTENT_BLOCKS:
             return {
                 "decision": "allow",
                 "message": "intent gate max 2 blocks reached; fail-open allow",
             }
-        ledger["intent_blocks"] = blocks + 1
+        _set_counter(ledger, payload, "intent_blocks", blocks + 1)
         save_ledger(payload, ledger)
     return {
         "decision": "block",
@@ -77,9 +78,27 @@ def block_intent_once(payload: Mapping[str, JsonValue], intent_command: str) -> 
     }
 
 
-def _counter_value(ledger: Mapping[str, JsonValue], field: str) -> int:
-    value = ledger.get(field)
+def _counter_value(
+    ledger: Mapping[str, JsonValue], payload: Mapping[str, JsonValue], field: str
+) -> int:
+    turn = active_turn(ledger, payload)
+    state = turn if turn is not None else ledger
+    value = state.get(field)
     return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _set_counter(
+    ledger: dict[str, JsonValue],
+    payload: Mapping[str, JsonValue],
+    field: str,
+    value: int,
+) -> None:
+    turn = active_turn(ledger, payload)
+    if turn is None:
+        ledger[field] = value
+        return
+    turn[field] = value
+    _ = refresh_v1_projection(ledger, turn)
 
 
 def _project_root(payload: Mapping[str, JsonValue]) -> str:

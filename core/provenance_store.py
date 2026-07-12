@@ -52,6 +52,10 @@ def save_turn_baseline(root: Path, agent: str, turn_id: str, snapshot: Snapshot)
     return path
 
 
+def load_turn_baseline(root: Path, agent: str, turn_id: str) -> Snapshot | None:
+    return _load(turn_baseline_path(root, agent, turn_id))
+
+
 def delete_turn_baseline(root: Path, agent: str, turn_id: str) -> None:
     try:
         turn_baseline_path(root, agent, turn_id).unlink(missing_ok=True)

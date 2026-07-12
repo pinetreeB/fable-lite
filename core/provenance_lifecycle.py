@@ -8,9 +8,7 @@ from .agent_log import ledger_transaction
 from .provenance import (
     SnapshotScanOptions,
     calculate_net_delta,
-    normalize_relative_path,
     snapshot_workspace_with_options,
-    workspace_scope_policy_id,
 )
 from .provenance_lifecycle_types import (
     Invocation,
@@ -30,6 +28,8 @@ from .provenance_store import (
     turn_baseline_path,
     workspace_current_path,
 )
+from .provenance_turn_resume import load_resumed_turn
+from .provenance_lifecycle_start import can_fast_start, candidate_paths as candidate_paths_for_root
 from .provenance_types import Snapshot
 
 
@@ -68,7 +68,17 @@ class ProvenanceLifecycle:
         turn_id: str,
         mutation_capable: bool = False,
     ) -> ObservationResult:
-        result = self._observe("", "external", frozenset(), not self._can_fast_start())
+        result = self._observe(
+            "",
+            "external",
+            frozenset(),
+            not can_fast_start(
+                self._state.current,
+                self._state.current_is_stop_full,
+                self._state.incomplete,
+                self._root,
+            ),
+        )
         if result.incomplete or result.snapshot is None:
             return result
         turn = TurnState(agent, turn_id, result.snapshot, self._state.event_seq, mutation_capable)
@@ -86,7 +96,7 @@ class ProvenanceLifecycle:
         invocation_id: str,
         candidate_paths: tuple[str, ...],
     ) -> Invocation:
-        self._turn(agent, turn_id)
+        _ = self._state.turns[(agent, turn_id)]
         snapshot_id = self._state.current.snapshot_id if self._state.current is not None else ""
         return Invocation(
             invocation_id,
@@ -94,11 +104,23 @@ class ProvenanceLifecycle:
             turn_id,
             self._state.event_seq,
             snapshot_id,
-            self._candidate_paths(candidate_paths),
+            candidate_paths_for_root(self._root, candidate_paths),
+        )
+
+    def resume_turn(
+        self,
+        agent: str,
+        turn_id: str,
+        mutation_capable: bool = False,
+    ) -> None:
+        if (agent, turn_id) in self._state.turns:
+            return
+        self._state.turns[(agent, turn_id)] = load_resumed_turn(
+            self._root, agent, turn_id, self._state.event_seq, mutation_capable
         )
 
     def post_tool(self, invocation: Invocation, source: str = "external") -> ObservationResult:
-        turn = self._turn(invocation.agent, invocation.turn_id)
+        turn = self._state.turns[(invocation.agent, invocation.turn_id)]
         result = self._observe(invocation.agent, source, invocation.candidate_paths, False)
         if not result.incomplete and self._state.current is not None:
             record_deltas(
@@ -112,7 +134,7 @@ class ProvenanceLifecycle:
         return self._turn_result(result, turn, False)
 
     def finish_turn(self, agent: str, turn_id: str) -> ObservationResult:
-        turn = self._turn(agent, turn_id)
+        turn = self._state.turns[(agent, turn_id)]
         result = self._observe(agent, "external", frozenset(), True)
         if not result.incomplete and self._state.current is not None:
             finalized = replace(
@@ -225,30 +247,6 @@ class ProvenanceLifecycle:
             clean_claim=not result.incomplete and not pending,
             stop_cap_reserved=stop_cap_reserved,
         )
-
-    def _can_fast_start(self) -> bool:
-        current = self._state.current
-        return (
-            current is not None
-            and self._state.current_is_stop_full
-            and not self._state.incomplete
-            and not current.incomplete
-            and current.scope_policy_id == workspace_scope_policy_id(self._root)
-        )
-
-    def _candidate_paths(self, candidates: tuple[str, ...]) -> frozenset[str]:
-        normalized: set[str] = set()
-        for candidate in candidates:
-            path = Path(candidate)
-            absolute = path if path.is_absolute() else self._root / path
-            try:
-                normalized.add(normalize_relative_path(self._root, absolute))
-            except ValueError:
-                continue
-        return frozenset(normalized)
-
-    def _turn(self, agent: str, turn_id: str) -> TurnState:
-        return self._state.turns[(agent, turn_id)]
 
     def _mark_incomplete(self, result: ObservationResult) -> ObservationResult:
         self._state.incomplete = True
