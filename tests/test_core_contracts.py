@@ -422,6 +422,84 @@ def test_high_risk_contract_blocks_edit_until_valid_contract_exists(tmp_path: Pa
     assert allowed["decision"] == "allow"
 
 
+def test_high_risk_contract_rejects_missing_malformed_and_empty_evidence(
+    tmp_path: Path,
+) -> None:
+    payload = {
+        "project_root": str(tmp_path),
+        "tool_name": "Edit",
+        "file_paths": ["migrations/001_init.sql"],
+        "prompt": "DB migrate",
+    }
+    contracts = (
+        {"restated_goal": "DB migrate", "acceptance": ["tables updated"]},
+        {"restated_goal": "DB migrate", "acceptance": ["tables updated"], "evidence": 123},
+        {"restated_goal": "DB migrate", "acceptance": ["tables updated"], "evidence": []},
+        {"restated_goal": "DB migrate", "acceptance": ["tables updated"], "evidence": [""]},
+        {"restated_goal": "DB migrate", "acceptance": ["tables updated"], "evidence": ["not run"]},
+    )
+    state_dir = tmp_path / ".fable-lite"
+    state_dir.mkdir()
+    path = state_dir / "contract.json"
+
+    for contract in contracts:
+        _ = path.write_text(json.dumps(contract), encoding="utf-8")
+        assert evaluate_pretool_contract(payload)["decision"] == "block", contract
+
+
+def test_high_risk_contract_accepts_non_empty_string_evidence_list(
+    tmp_path: Path,
+) -> None:
+    payload = {
+        "project_root": str(tmp_path),
+        "tool_name": "Edit",
+        "file_paths": ["migrations/001_init.sql"],
+        "prompt": "DB migrate",
+    }
+    state_dir = tmp_path / ".fable-lite"
+    state_dir.mkdir()
+    _ = (state_dir / "contract.json").write_text(
+        json.dumps(
+            {
+                "restated_goal": "DB migrate",
+                "acceptance": ["tables updated"],
+                "evidence": ["python -m pytest tests/test_migration.py"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert evaluate_pretool_contract(payload)["decision"] == "allow"
+
+
+def test_high_risk_contract_rejects_malformed_json_but_non_risk_edit_needs_none(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".fable-lite"
+    state_dir.mkdir()
+    _ = (state_dir / "contract.json").write_text("{", encoding="utf-8")
+
+    high_risk = evaluate_pretool_contract(
+        {
+            "project_root": str(tmp_path),
+            "tool_name": "Edit",
+            "file_paths": ["migrations/001_init.sql"],
+            "prompt": "DB migrate",
+        }
+    )
+    ordinary = evaluate_pretool_contract(
+        {
+            "project_root": str(tmp_path),
+            "tool_name": "Edit",
+            "file_paths": ["app.py"],
+            "prompt": "rename a local helper",
+        }
+    )
+
+    assert high_risk["decision"] == "block"
+    assert ordinary["decision"] == "allow"
+
+
 def test_high_risk_contract_blocks_shell_commands_without_valid_contract(tmp_path: Path) -> None:
     result = evaluate_pretool_contract({"project_root": str(tmp_path), "tool_name": "Bash", "command": "python manage.py migrate && psql -c 'DROP TABLE users'"})
 

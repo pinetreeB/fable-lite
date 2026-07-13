@@ -339,15 +339,15 @@ def _valid_contract(root: str) -> bool:
     contract = cast(Mapping[str, JsonValue], raw)
     restated = contract.get("restated_goal")
     acceptance = contract.get("acceptance")
-    evidence = contract.get("evidence", [])
+    evidence = contract.get("evidence")
     if not isinstance(restated, str) or not restated.strip():
         return False
     if not _string_sequence(acceptance) or not any(item.strip() for item in acceptance):
         return False
-    if _string_sequence(evidence):
-        text = "\n".join(item for item in evidence if item).lower()
-        return not any(marker in text for marker in FAKE_EVIDENCE)
-    return True
+    if not _string_sequence(evidence) or not any(item.strip() for item in evidence):
+        return False
+    text = "\n".join(item for item in evidence if item).lower()
+    return not any(marker in text for marker in FAKE_EVIDENCE)
 
 
 def _intent_set_command(payload: Mapping[str, JsonValue]) -> str:
