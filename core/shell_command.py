@@ -48,16 +48,28 @@ _SSH_VALUE_OPTIONS: Final = frozenset(
 _SSH_SAFE_CONFIG_OPTIONS: Final = frozenset(
     {
         "batchmode",
+        "bindaddress",
+        "bindinterface",
+        "ciphers",
+        "compression",
         "connectionattempts",
         "connecttimeout",
+        "escapechar",
+        "forwardagent",
+        "hostkeyalgorithms",
+        "hostname",
         "identitiesonly",
         "identityfile",
         "loglevel",
+        "macs",
+        "port",
         "preferredauthentications",
+        "proxyjump",
         "requesttty",
         "serveralivecountmax",
         "serveraliveinterval",
         "stricthostkeychecking",
+        "user",
     }
 )
 _SCP_SAFE_FLAGS: Final = frozenset(
@@ -266,8 +278,17 @@ def _is_tcp_local_forward(value: str) -> bool:
 
 
 def _is_safe_ssh_config(value: str) -> bool:
-    name = clean_token(value).split("=", 1)[0].split(maxsplit=1)[0].casefold()
-    return name in _SSH_SAFE_CONFIG_OPTIONS
+    cleaned = clean_token(value)
+    if "=" in cleaned:
+        name, raw_value = cleaned.split("=", 1)
+    else:
+        name, separator, raw_value = cleaned.partition(" ")
+        if not separator:
+            raw_value = ""
+    normalized_name = name.casefold()
+    if normalized_name == "stricthostkeychecking":
+        return raw_value.strip().casefold() == "yes"
+    return normalized_name in _SSH_SAFE_CONFIG_OPTIONS
 
 
 def _is_remote_spec(value: str) -> bool:

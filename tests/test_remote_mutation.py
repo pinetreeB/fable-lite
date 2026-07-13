@@ -62,6 +62,17 @@ def test_supported_read_only_openssh_options_do_not_hide_remote_mutations() -> N
         assert is_remote_only_mutation_command(command) is True, command
 
 
+def test_read_only_ssh_config_options_do_not_hide_remote_mutations() -> None:
+    commands = (
+        'ssh -o Compression=yes -o Ciphers=aes128-ctr -o Port=2222 -o User=deploy host "touch remote-marker"',
+        "scp -o Compression=yes -o Ciphers=aes128-ctr -o Port=2222 -o User=deploy artifact.tar host:/srv/app/",
+        'ssh -o StrictHostKeyChecking=yes host "touch remote-marker"',
+    )
+
+    for command in commands:
+        assert is_remote_only_mutation_command(command) is True, command
+
+
 def test_remote_commands_with_local_or_mixed_effects_are_not_remote_only() -> None:
     commands = (
         "ssh deploy@example.com uptime > local.log",
@@ -87,6 +98,10 @@ def test_remote_commands_with_local_or_mixed_effects_are_not_remote_only() -> No
         "ssh -o LocalCommand=touch-local deploy@example.com uptime",
         "ssh -o ProxyCommand=local-proxy deploy@example.com uptime",
         "ssh -o ControlPath=local.sock deploy@example.com uptime",
+        'ssh -o StrictHostKeyChecking=accept-new host "touch remote-marker"',
+        'ssh -o StrictHostKeyChecking=ask host "touch remote-marker"',
+        'ssh -o StrictHostKeyChecking=no host "touch remote-marker"',
+        'ssh -o StrictHostKeyChecking=off host "touch remote-marker"',
         (
             "ssh -o StrictHostKeyChecking=accept-new "
             "-o UserKnownHostsFile=./local-known-hosts deploy@example.com uptime"
