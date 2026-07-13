@@ -201,6 +201,53 @@ def test_verified_remote_only_turn_recovers_without_local_provenance_claim(
     assert verified.get("decision") != "block"
 
 
+def test_docs_only_local_change_does_not_exempt_unverified_remote_epoch(
+    tmp_path: Path,
+) -> None:
+    # Given: one successful remote mutation and a docs-only local edit in the same turn.
+    run_hook(
+        "user_prompt_submit.py",
+        {"cwd": str(tmp_path), "prompt": "원격 설정과 문서를 갱신해줘", "session_id": "s1"},
+    )
+    remote_payload: HookPayload = {
+        "cwd": str(tmp_path),
+        "tool_name": "Bash",
+        "tool_input": {"command": 'ssh deploy@example.com "touch remote-marker"'},
+        "session_id": "s1",
+        "tool_use_id": "remote-change",
+    }
+    run_hook("pre_tool_use.py", remote_payload)
+    run_hook(
+        "post_tool_use.py",
+        {
+            **remote_payload,
+            "tool_response": {"exit_code": 0, "stdout": "updated"},
+        },
+    )
+    readme = tmp_path / "README.md"
+    _ = readme.write_text("docs", encoding="utf-8")
+    run_hook(
+        "post_tool_use.py",
+        {
+            "cwd": str(tmp_path),
+            "tool_name": "Edit",
+            "tool_input": {"file_path": str(readme)},
+            "tool_response": {"filePath": str(readme)},
+            "session_id": "s1",
+            "tool_use_id": "docs-change",
+        },
+    )
+
+    # When: Stop is evaluated without a successful verification covering the remote epoch.
+    stopped = run_hook(
+        "stop.py",
+        {"cwd": str(tmp_path), "session_id": "s1", "stop_hook_active": False},
+    )
+
+    # Then: docs-only local state cannot suppress the outstanding remote verification gate.
+    assert stopped.get("decision") == "block"
+
+
 def test_scope_too_large_turn_still_tracks_and_verifies_remote_mutation(
     tmp_path: Path,
 ) -> None:

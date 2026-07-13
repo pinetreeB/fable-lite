@@ -114,7 +114,13 @@ def _legacy_seq_less_verification(
 def _docs_only(ledger: Mapping[str, JsonValue]) -> bool:
     changed = _as_str_list(ledger.get("changed_files_seen"))
     kinds = set(_as_str_list(ledger.get("change_kinds")))
-    return bool(changed) and bool(kinds) and kinds <= {"docs"}
+    remote_seq = _positive_sequence(ledger.get("last_remote_mutation_seq"))
+    return (
+        remote_seq is None
+        and bool(changed)
+        and bool(kinds)
+        and kinds <= {"docs"}
+    )
 
 
 def _assistant_text(payload: Mapping[str, JsonValue]) -> str:

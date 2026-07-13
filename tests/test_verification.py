@@ -56,6 +56,22 @@ def test_output_only_and_quoted_runner_names_are_not_verification_commands() -> 
         assert is_verification_command(command) is False, command
 
 
+def test_shell_chains_cannot_claim_atomic_verification_evidence() -> None:
+    # Given: shell operators can skip tests or conceal their failing exit status.
+    commands = (
+        "echo ok || pytest",
+        "pytest || echo ok",
+        "pytest && echo ok",
+        "pytest ; echo ok",
+        "pytest | cat",
+        "pytest & echo ok",
+    )
+
+    # When/Then: a chained command is not atomic verification evidence.
+    for command in commands:
+        assert is_verification_command(command) is False, command
+
+
 def test_real_test_runners_and_explicit_inline_assertions_remain_verification() -> None:
     commands = (
         "python -m pytest tests/",

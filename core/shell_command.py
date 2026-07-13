@@ -7,7 +7,7 @@ from typing import Final
 
 COMMAND_SEPARATORS: Final = frozenset({"&&", "||", ";", "|", "&"})
 _SSH_SAFE_FLAGS: Final = frozenset({"-4", "-6", "-n", "-q", "-t", "-T", "-v"})
-_SSH_VALUE_OPTIONS: Final = frozenset({"-l", "-o", "-p"})
+_SSH_VALUE_OPTIONS: Final = frozenset({"-i", "-l", "-o", "-p"})
 _SSH_SAFE_CONFIG_OPTIONS: Final = frozenset(
     {
         "batchmode",
@@ -24,18 +24,14 @@ _SSH_SAFE_CONFIG_OPTIONS: Final = frozenset(
     }
 )
 _SCP_SAFE_FLAGS: Final = frozenset({"-4", "-6", "-C", "-p", "-q", "-r", "-v"})
-_SCP_VALUE_OPTIONS: Final = frozenset({"-P"})
+_SCP_VALUE_OPTIONS: Final = frozenset({"-P", "-i"})
 _ENV_ASSIGNMENT_RE: Final = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*")
 _WINDOWS_DRIVE_RE: Final = re.compile(r"^[A-Za-z]:[\\/]")
 
 
 def command_segments(command: str) -> tuple[tuple[str, ...], ...]:
-    try:
-        lexer = shlex.shlex(command, posix=False, punctuation_chars=";&|<>")
-        lexer.whitespace_split = True
-        lexer.commenters = "#"
-        tokens = tuple(clean_token(token) for token in lexer if token)
-    except ValueError:
+    tokens = _command_tokens(command, posix=False)
+    if not tokens:
         return ()
     segments: list[tuple[str, ...]] = []
     current: list[str] = []
@@ -49,6 +45,24 @@ def command_segments(command: str) -> tuple[tuple[str, ...], ...]:
     if current:
         segments.append(tuple(current))
     return tuple(segments)
+
+
+def command_operators(command: str) -> frozenset[str]:
+    return frozenset(
+        token
+        for token in _command_tokens(command, posix=True)
+        if token in COMMAND_SEPARATORS
+    )
+
+
+def _command_tokens(command: str, *, posix: bool) -> tuple[str, ...]:
+    try:
+        lexer = shlex.shlex(command, posix=posix, punctuation_chars=";&|<>")
+        lexer.whitespace_split = True
+        lexer.commenters = "#"
+        return tuple(clean_token(token) for token in lexer if token)
+    except ValueError:
+        return ()
 
 
 def command_name(token: str) -> str:
@@ -146,6 +160,20 @@ def _operands(
             if argument == "-o" and not _is_safe_ssh_config(arguments[index + 1]):
                 return None
             index += 2
+            continue
+        attached_option = next(
+            (
+                option
+                for option in value_options
+                if len(option) == 2 and argument.startswith(option)
+            ),
+            None,
+        )
+        if attached_option is not None:
+            value = argument[len(attached_option) :]
+            if attached_option == "-o" and not _is_safe_ssh_config(value):
+                return None
+            index += 1
             continue
         if argument.startswith("-"):
             if argument not in safe_flags:

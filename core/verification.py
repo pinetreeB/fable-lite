@@ -6,6 +6,7 @@ from typing import Final
 
 from .shell_command import (
     command_name,
+    command_operators,
     command_segments,
     remote_ssh_command_tokens,
     without_environment_assignments,
@@ -56,6 +57,8 @@ OK_WORD_RE = re.compile(r"\bok\b", re.IGNORECASE)
 
 def is_verification_command(command: str) -> bool:
     """이 셸 명령이 검증(테스트/빌드확인) 명령으로 인정되는지 판정한다."""
+    if command_operators(command):
+        return False
     return any(_is_verification_invocation(tokens) for tokens in command_segments(command))
 
 
