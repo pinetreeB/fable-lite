@@ -68,7 +68,7 @@ In short: **show-me-the-work is not a tool that makes you trust the AI — it's 
 
 ## Technical summary
 
-A Korean-first, evidence-based AI work supervisor for Claude Code, Codex, and Antigravity — investigation, verification grounding, evidence-gated completion, scope control, and high-risk contracts enforced as **deterministic hooks**, not suggestions.
+A Korean-first, evidence-based AI work supervisor with live hook receipts for Claude Code and Codex CLI, plus an Antigravity adapter validated by payload injection. It enforces investigation, verification grounding, evidence-gated completion, scope control, and high-risk contracts as **deterministic hooks**, not suggestions.
 
 **A procedure transplant, not a capability transplant.** Weight-level abilities (out-of-spec defect discovery, self-driven implication depth) are explicitly out of scope; the harness escalates honestly instead of pretending.
 
@@ -87,14 +87,37 @@ The qualitative gap **held across 3 repeat runs** (OFF verified 0/3, ON 3/3), th
 | Investigation protocol (3+ hypotheses, evidence, rejections) | pack + **N1 compliance parser** on Stop (bilingual markers) |
 | Verification grounding (RUN→OBSERVE→FIX→RE-RUN) | pack + evidence ledger |
 | Evidence-gated completion | Stop hook blocks changed-but-unverified turns (max 2, fail-open) |
+| Filesystem provenance | bounded snapshots, per-turn baselines, and full Stop reconciliation |
 | Scope drift detection | PostToolUse warning |
 | High-risk contract (auth/migration/payment/mass-delete) | PreToolUse **hard block** until `.fable-lite/contract.json` exists |
 | Korean-first routing | "버그 고쳐줘", "왜 안 돼" → investigation pack |
 | Goals checkpoints | `goals/goals.py` CLI, verify-with-evidence required |
+| Session Scorecard | per-session block, recovery, and cap counts from an append-only gate journal |
 
 Pure-stdlib Python core (zero Claude Code imports — platform-neutral, adapters are thin wrappers), single state dir `.fable-lite/`, every hook fail-open, Windows-native.
 
 > Compatibility note: the internal state path remains `.fable-lite/` in v2.0 to avoid breaking existing installations. A public alias is planned for v2.1.
+
+Non-document file changes require a fresh successful verification in every task mode (`quick`, `normal`, and `deep`). No change and documentation-only turns retain their existing allow behavior.
+
+### Host support
+
+| Host | Current status |
+|---|---|
+| Claude Code | live hook chain confirmed |
+| Codex CLI | live hook chain confirmed |
+| Antigravity | payload-injection conformance confirmed; live firing on host 1.1.1 is not confirmed |
+
+### State and honest limits
+
+User state remains under `.fable-lite/`. The main ledger, goals, intent/contract files, per-agent JSONL logs, bounded session-scorecard cache, provenance configuration, snapshots, turn baselines, gate journal, locks, and recovery backups all live there. Important paths include `ledger.json`, `agents/*.jsonl`, `snapshots/workspace-current.json`, `snapshots/turns/**`, `scorecard/gates.jsonl`, and `provenance-config.json`.
+
+- Stop blocks at most twice and then fail-opens; this prevents deadlocks but is not an adversarial-model security boundary.
+- Files outside the project root and database or network side effects are not directly observed.
+- Provenance supports up to 10,000 tracked entries and 256 MiB. A full Stop reconciliation near that envelope can take several seconds. Larger or slower scopes return an explicit advisory-only `scope too large` state instead of committing a partial snapshot. Time limits are cooperative between filesystem calls and hash chunks; one blocked OS call cannot be preempted.
+- Direct `ssh` and local-to-remote `scp` are tracked as remote mutation epochs. A later, separately started successful verification can satisfy the epoch; this does not prove that remote state was observed as clean. Commands with local redirects, pipelines, downloads, chains, substitutions, or unsafe SSH options stay on the conservative local-mutation path.
+- Promise-only text completion remains manual probe `PRB-01`; there is no dedicated blocking rule. Independent per-gate toggles remain manual probe `PRB-11` and are not implemented.
+- The harness improves work discipline and evidence quality. It does not make a model more capable or guarantee complete defense against deliberate evasion.
 
 ## Install
 
@@ -114,7 +137,7 @@ After the plugin is registered in a marketplace, `/plugin marketplace add pinetr
 
 ```
 python -m pytest tests/ -q      # unit tests
-python eval/run_probes.py       # deterministic probe suite
+python eval/run_probes.py --strict  # deterministic probe suite; 15 pass, 0 fail, 3 manual
 python eval/e2e_smoke.py        # full hook-chain smoke (real CC payload schema)
 ```
 
