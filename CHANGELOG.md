@@ -1,5 +1,35 @@
 # Changelog
 
+## [2.0.1] - 2026-07-14
+
+### Added
+
+- Added Session Quality Scorecard: an append-only gate journal, bounded per-session ledger cache, privacy-preserving CLI summaries, and optional Stop allow summaries for Claude Code, Codex CLI, and Antigravity payloads.
+- Added bounded provenance scans for 10,000 tracked entries, 256 MiB, and cooperative full/incremental deadlines. Oversized scopes now return an explicit advisory-only `scope too large` state without committing partial snapshots.
+- Added conservative remote mutation epochs for direct `ssh` and local-to-remote `scp`. A separately started successful verification must cover the remote epoch; local redirects, pipelines, downloads, command chains, substitutions, and unsafe SSH options do not use this relaxation.
+- Expanded CI with Ruff, version synchronization, fresh W9 receipts, wheel build/install smoke, and a Windows nightly/tag workflow for randomized W9, W10, the eight-process Stop race, tag/version matching, and receipt artifacts.
+
+### Fixed
+
+- Removed the `quick`-mode exemption for non-document changes. Fresh successful verification is now required for code and other non-document artifacts in every task mode.
+- Replaced substring-only verification recognition with shell-aware tokenization so output-only commands such as `echo pytest`, `printf`, `Write-Output`, comments, and print-only inline Python cannot unlock Stop.
+- Tightened high-risk R1 contracts so `evidence` is required, must be a list of non-empty strings, and cannot be replaced with missing, scalar, empty, or whitespace-only values.
+- Applied soft provenance exclusions at every path depth so nested dependency and cache directories do not trigger home-root scan blowups.
+- Preserved frozen verification epochs and conservative local-mutation handling in oversized scopes, including SSH options that can create local files.
+- Cleared the current Ruff findings without adding runtime dependencies.
+
+### Changed
+
+- Updated both READMEs to describe v2 state paths, Scorecard, the current deterministic probe result, the actual host-support matrix, and the limits below.
+
+### Known Limitations
+
+- Stop still fail-opens after two blocks. The harness supervises normal work discipline; it is not a complete defense against a deliberately evasive model.
+- Files outside the project root and database or network side effects are not directly observed. Remote epochs prove only that a later verification command ran after the remote mutation, not that remote state was independently observed as clean.
+- Full reconciliation near the 10,000-entry/256 MiB envelope can take several seconds. Deadlines are cooperative and cannot preempt one blocked OS call.
+- Promise-only completion (`PRB-01`) and independent per-gate toggles (`PRB-11`) remain manual/unimplemented.
+- Antigravity conformance is validated by payload injection; live firing on host 1.1.1 remains unconfirmed.
+
 ## [2.0.0] - 2026-07-13
 
 ### Added - Change provenance
