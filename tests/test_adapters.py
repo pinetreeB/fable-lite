@@ -307,7 +307,9 @@ def test_failed_remote_attempt_still_requires_fresh_verification(tmp_path: Path)
         "post_tool_use.py",
         {
             **remote_payload,
-            "tool_response": {"exit_code": 1, "stderr": "remote command failed"},
+            "hook_event_name": "PostToolUseFailure",
+            "error": "remote command failed",
+            "is_interrupt": False,
         },
     )
     ledger = json.loads(
@@ -322,6 +324,35 @@ def test_failed_remote_attempt_still_requires_fresh_verification(tmp_path: Path)
 
     assert isinstance(turn.get("last_remote_mutation_seq"), int)
     assert stopped.get("decision") == "block"
+
+
+def test_failure_hook_scope_context_uses_matching_event_name(tmp_path: Path) -> None:
+    run_hook(
+        "user_prompt_submit.py",
+        {"cwd": str(tmp_path), "prompt": "app.py만 수정해줘", "session_id": "s1"},
+    )
+    payload: HookPayload = {
+        "cwd": str(tmp_path),
+        "tool_name": "Bash",
+        "tool_input": {"command": "touch other.py"},
+        "session_id": "s1",
+        "tool_use_id": "failed-out-of-scope",
+    }
+    run_hook("pre_tool_use.py", payload)
+    _ = (tmp_path / "other.py").write_text("changed", encoding="utf-8")
+
+    result = run_hook(
+        "post_tool_use.py",
+        {
+            **payload,
+            "hook_event_name": "PostToolUseFailure",
+            "error": "command failed after writing",
+            "is_interrupt": False,
+        },
+    )
+
+    hook_output = object_value(result["hookSpecificOutput"])
+    assert hook_output["hookEventName"] == "PostToolUseFailure"
 
 
 def test_scope_too_large_turn_still_tracks_and_verifies_remote_mutation(
@@ -585,6 +616,10 @@ def test_plugin_manifest_and_hooks_json_exist() -> None:
     assert plugin["name"] == "show-me-the-work"
     assert "hooks" in plugin
     assert "Bash|PowerShell" in hooks["hooks"]["PreToolUse"][0]["matcher"]
+    assert (
+        hooks["hooks"]["PostToolUseFailure"][0]["hooks"][0]["command"]
+        == hooks["hooks"]["PostToolUse"][0]["hooks"][0]["command"]
+    )
     for hook_entries in hooks["hooks"].values():
         for entry in hook_entries:
             assert entry["hooks"][0]["timeout"] == 10

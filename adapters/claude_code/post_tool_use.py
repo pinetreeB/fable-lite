@@ -27,6 +27,13 @@ def main() -> int:
             tool_success,
         )
         payload = read_payload()
+        raw_hook_event = payload.get("hook_event_name")
+        hook_event_name = (
+            raw_hook_event
+            if isinstance(raw_hook_event, str)
+            and raw_hook_event in {"PostToolUse", "PostToolUseFailure"}
+            else "PostToolUse"
+        )
         from core.adapter_observation import observe_post_tool, resolve_active_invocation, verification_covers
         from core.classify import classify_prompt
         from core.contract import EDIT_TOOLS, SHELL_TOOLS
@@ -103,7 +110,7 @@ def main() -> int:
                     {
                         "systemMessage": str(scope["message"]),
                         "hookSpecificOutput": {
-                            "hookEventName": "PostToolUse",
+                            "hookEventName": hook_event_name,
                             "additionalContext": str(scope["message"]),
                         },
                     }
