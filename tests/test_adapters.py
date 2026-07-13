@@ -290,6 +290,40 @@ def test_remote_possible_command_records_epoch_while_local_observation_stays_ena
     assert stopped.get("decision") == "block"
 
 
+def test_failed_remote_attempt_still_requires_fresh_verification(tmp_path: Path) -> None:
+    run_hook(
+        "user_prompt_submit.py",
+        {"cwd": str(tmp_path), "prompt": "원격 작업을 실행해줘", "session_id": "s1"},
+    )
+    remote_payload: HookPayload = {
+        "cwd": str(tmp_path),
+        "tool_name": "Bash",
+        "tool_input": {"command": 'ssh host "touch /tmp/marker; false"'},
+        "session_id": "s1",
+        "tool_use_id": "partially-failed-remote",
+    }
+    run_hook("pre_tool_use.py", remote_payload)
+    run_hook(
+        "post_tool_use.py",
+        {
+            **remote_payload,
+            "tool_response": {"exit_code": 1, "stderr": "remote command failed"},
+        },
+    )
+    ledger = json.loads(
+        (tmp_path / ".fable-lite" / "ledger.json").read_text(encoding="utf-8")
+    )
+    turn = object_value(object_value(ledger["active_turns"])["claude_code:s1:claude"])
+
+    stopped = run_hook(
+        "stop.py",
+        {"cwd": str(tmp_path), "session_id": "s1", "stop_hook_active": False},
+    )
+
+    assert isinstance(turn.get("last_remote_mutation_seq"), int)
+    assert stopped.get("decision") == "block"
+
+
 def test_scope_too_large_turn_still_tracks_and_verifies_remote_mutation(
     tmp_path: Path,
 ) -> None:

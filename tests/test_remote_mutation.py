@@ -88,6 +88,16 @@ def test_remote_mutation_epoch_is_independent_of_local_effect_classification() -
         'ssh -o ControlPath=local.sock host "touch remote-marker"',
         "scp -F ssh-config artifact.tar host:/srv/app/",
         "scp artifact.tar host:/srv/app/ > transfer.log",
+        'ssh -vp2222 host "touch remote-marker"',
+        'ssh -qJbastion host "touch remote-marker"',
+        'ssh -Tiidentity host "touch remote-marker"',
+        "scp artifact.tar host:/srv/app/ 1>transfer.log",
+        "scp artifact.tar host:/srv/app/ 2>transfer.err",
+        "scp artifact.tar host:/srv/app/ 2>>transfer.err",
+        "scp artifact.tar host:/srv/app/ 2>&1",
+        "scp 2>transfer.err artifact.tar host:/srv/app/",
+        "2>transfer.err scp artifact.tar host:/srv/app/",
+        '2>ssh.err ssh host "touch remote-marker"',
     )
 
     for command in commands:

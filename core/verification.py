@@ -10,6 +10,7 @@ from .shell_command import (
     command_segments,
     remote_ssh_command_tokens,
     without_environment_assignments,
+    without_shell_redirections,
 )
 
 
@@ -59,7 +60,10 @@ def is_verification_command(command: str) -> bool:
     """이 셸 명령이 검증(테스트/빌드확인) 명령으로 인정되는지 판정한다."""
     if "\n" in command or "\r" in command or command_operators(command):
         return False
-    return any(_is_verification_invocation(tokens) for tokens in command_segments(command))
+    return any(
+        _is_verification_invocation(without_shell_redirections(tokens))
+        for tokens in command_segments(command)
+    )
 
 
 def _is_verification_invocation(tokens: tuple[str, ...]) -> bool:

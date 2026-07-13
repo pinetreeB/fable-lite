@@ -190,14 +190,14 @@ def is_remote_only_mutation_command(command: str) -> bool:
 
 def is_remote_mutation_command(command: str) -> bool:
     for segment in command_segments(command):
-        tokens = without_environment_assignments(segment)
+        tokens = without_environment_assignments(without_shell_redirections(segment))
         if not tokens:
             continue
         name = command_name(tokens[0])
         if name == "ssh" and _is_ssh_remote_mutation(tokens[1:]):
             return True
         if name == "scp" and _is_scp_upload_with_options(
-            _before_redirection(tokens[1:]),
+            tokens[1:],
             _SCP_ALL_FLAGS,
             _SCP_ALL_VALUE_OPTIONS,
             validate_values=False,
@@ -206,29 +206,62 @@ def is_remote_mutation_command(command: str) -> bool:
     return False
 
 
-def _before_redirection(tokens: tuple[str, ...]) -> tuple[str, ...]:
-    for index, token in enumerate(tokens):
-        if token and set(token) <= {"<", ">"}:
-            return tokens[:index]
-    return tokens
+def without_shell_redirections(tokens: tuple[str, ...]) -> tuple[str, ...]:
+    normalized: list[str] = []
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if _is_redirection_operator(token):
+            if normalized and _is_stream_selector(normalized[-1]):
+                _ = normalized.pop()
+            index += 1
+            if index < len(tokens) and not _is_redirection_operator(tokens[index]):
+                index += 1
+            continue
+        normalized.append(token)
+        index += 1
+    return tuple(normalized)
+
+
+def _is_redirection_operator(token: str) -> bool:
+    return bool(
+        token
+        and ({"<", ">"} & set(token))
+        and set(token) <= {"<", ">", "&", "|"}
+    )
+
+
+def _is_stream_selector(token: str) -> bool:
+    return token.isdigit() or token == "*"
 
 
 def remote_ssh_command(command: str) -> str | None:
-    if not is_remote_only_mutation_command(command):
-        return None
     segments = command_segments(command)
-    tokens = without_environment_assignments(segments[0])
+    if len(segments) != 1:
+        return None
+    tokens = without_environment_assignments(
+        without_shell_redirections(segments[0])
+    )
+    if not tokens:
+        return None
     if command_name(tokens[0]) != "ssh":
         return None
     return remote_ssh_command_tokens(tokens)
 
 
 def remote_ssh_command_tokens(tokens: tuple[str, ...]) -> str | None:
+    tokens = without_shell_redirections(tokens)
     if not tokens or command_name(tokens[0]) != "ssh":
         return None
-    if any(token and set(token) <= {"<", ">"} for token in tokens):
+    arguments = tokens[1:]
+    if _ssh_options_disable_remote_command(arguments):
         return None
-    operands = _operands(tokens[1:], _SSH_SAFE_FLAGS, _SSH_VALUE_OPTIONS)
+    operands = _operands(
+        arguments,
+        _SSH_ALL_FLAGS,
+        _SSH_ALL_VALUE_OPTIONS,
+        validate_values=False,
+    )
     if operands is None or len(operands) < 2:
         return ""
     return " ".join(operands[1:])
@@ -307,23 +340,12 @@ def _operands(
                 return None
             index += 2
             continue
-        attached_option = next(
-            (
-                option
-                for option in value_options
-                if len(option) == 2 and argument.startswith(option)
-            ),
-            None,
-        )
-        if attached_option is not None:
-            value = argument[len(attached_option) :]
-            if validate_values and not _is_safe_option_value(attached_option, value):
-                return None
-            index += 1
-            continue
         if argument.startswith("-"):
-            if argument not in safe_flags and not _is_safe_flag_bundle(
-                argument, safe_flags
+            if argument not in safe_flags and not _is_valid_option_cluster(
+                argument,
+                safe_flags,
+                value_options,
+                validate_values=validate_values,
             ):
                 return None
             index += 1
@@ -351,24 +373,8 @@ def _ssh_options_disable_remote_command(arguments: tuple[str, ...]) -> bool:
                 return True
             index += 2
             continue
-        attached_option = next(
-            (
-                option
-                for option in _SSH_ALL_VALUE_OPTIONS
-                if len(option) == 2 and argument.startswith(option)
-            ),
-            None,
-        )
-        if attached_option is not None:
-            value = argument[len(attached_option) :]
-            if attached_option in _SSH_NO_REMOTE_VALUE_OPTIONS:
-                return True
-            if attached_option == "-o" and _ssh_config_disables_remote_command(value):
-                return True
-            index += 1
-            continue
-        if argument in _SSH_NO_REMOTE_FLAGS or any(
-            f"-{flag}" in _SSH_NO_REMOTE_FLAGS for flag in argument[1:]
+        if argument in _SSH_NO_REMOTE_FLAGS or _ssh_option_cluster_disables_remote(
+            argument
         ):
             return True
         index += 1
@@ -384,10 +390,45 @@ def _ssh_config_disables_remote_command(value: str) -> bool:
     return name.casefold() == "sessiontype" and raw_value.strip().casefold() == "none"
 
 
-def _is_safe_flag_bundle(argument: str, safe_flags: frozenset[str]) -> bool:
-    return len(argument) > 2 and all(
-        f"-{flag}" in safe_flags for flag in argument[1:]
-    )
+def _is_valid_option_cluster(
+    argument: str,
+    flags: frozenset[str],
+    value_options: frozenset[str],
+    *,
+    validate_values: bool,
+) -> bool:
+    body = argument[1:]
+    index = 0
+    while index < len(body):
+        option = f"-{body[index]}"
+        if option in flags:
+            index += 1
+            continue
+        if option in value_options:
+            value = body[index + 1 :]
+            return bool(value) and (
+                not validate_values or _is_safe_option_value(option, value)
+            )
+        return False
+    return bool(body)
+
+
+def _ssh_option_cluster_disables_remote(argument: str) -> bool:
+    if not argument.startswith("-"):
+        return False
+    body = argument[1:]
+    index = 0
+    while index < len(body):
+        option = f"-{body[index]}"
+        if option in _SSH_NO_REMOTE_FLAGS:
+            return True
+        if option in _SSH_ALL_VALUE_OPTIONS:
+            value = body[index + 1 :]
+            return option in _SSH_NO_REMOTE_VALUE_OPTIONS or (
+                option == "-o" and _ssh_config_disables_remote_command(value)
+            )
+        index += 1
+    return False
 
 
 def _is_safe_option_value(option: str, value: str) -> bool:

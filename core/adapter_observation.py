@@ -251,8 +251,7 @@ def _record_status(root: Path, invocation: CanonicalInvocation, report: Observat
     if _mutation_capable(invocation):
         payload["provenance_mutation_capable"] = True
     if (
-        invocation.success
-        and _remote_mutation(invocation)
+        _remote_mutation(invocation)
         and not is_verification_command(invocation.command_hint)
     ):
         payload["provenance_remote_mutation"] = True

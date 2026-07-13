@@ -96,6 +96,9 @@ def test_real_test_runners_and_explicit_inline_assertions_remain_verification() 
         'python3 -c "assert True"',
         '"C:\\Python312\\python.exe" -m pytest "tests\\unit tests"',
         'ssh deploy@example.com "python -m pytest tests/"',
+        'ssh -o KexAlgorithms=curve25519-sha256 host "pytest -q"',
+        'ssh -E local.log host "pytest -q"',
+        'ssh -o ControlPath=local.sock host "pytest -q"',
     )
 
     for command in commands:
