@@ -43,8 +43,17 @@ class StressResult:
 
 
 @dataclass(frozen=True, slots=True)
+class ScorecardBenchResult:
+    warmups: int
+    measurements: int
+    phases: dict[str, dict[str, PhaseStats]]
+    hard_gate: SloResult
+
+
+@dataclass(frozen=True, slots=True)
 class BenchResult:
     scales: tuple[ScaleResult, ...]
     slo: SloResult
     scale_slos: dict[int, SloResult]
     stress: StressResult
+    scorecard: ScorecardBenchResult | None = None

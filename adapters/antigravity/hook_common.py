@@ -5,7 +5,7 @@ import os
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, TypeGuard, cast
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from core.adapter_observation import CanonicalInvocation
@@ -43,6 +43,7 @@ def canonical_invocation(
     from core.adapter_observation import CanonicalInvocation
 
     session = payload.get("session_id")
+    identity_synthetic = not isinstance(session, str) or not session
     session_id = session if isinstance(session, str) and session else "default"
     agent_value = payload.get("agent")
     agent = agent_value if isinstance(agent_value, str) and agent_value else "antigravity"
@@ -62,6 +63,7 @@ def canonical_invocation(
         command,
         success,
         evidence,
+        identity_synthetic,
     )
 
 
@@ -91,7 +93,7 @@ def emit(payload: Mapping[str, object]) -> int:
 
 
 def handle_after_agent(payload: Mapping[str, object]) -> int:
-    from core.adapter_observation import finish_turn, resolve_active_invocation
+    from core.adapter_observation import finish_turn, resolve_active_invocation, restart_blocked_turn
     from core.verify_state import evaluate_stop
 
     root = project_root(payload)
@@ -108,17 +110,14 @@ def handle_after_agent(payload: Mapping[str, object]) -> int:
         "project_root": root,
         "stop_hook_active": False,
         "assistant_text": assistant_text,
+        "host": invocation.host,
+        "agent": invocation.agent,
+        "session_id": invocation.session_id,
+        "turn_id": invocation.turn_id,
+        "attribution": invocation.scorecard_attribution,
     }
-    if isinstance(payload.get("agent"), str) and payload.get("agent"):
-        stop_payload.update(
-            {
-                "host": invocation.host,
-                "agent": invocation.agent,
-                "session_id": invocation.session_id,
-                "turn_id": invocation.turn_id,
-            }
-        )
     result = evaluate_stop(stop_payload)
     if result.get("decision") == "block":
+        restart_blocked_turn(Path(root), invocation)
         return emit({"decision": "block", "reason": str(result.get("reason", ""))})
     return emit({"decision": "allow", "systemMessage": str(result.get("message", "[smtw] Stop gate allow."))})

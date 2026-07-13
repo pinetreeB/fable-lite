@@ -12,9 +12,17 @@ from .gate_counters import (
     block_intent_once,
     needs_goals_block,
     needs_intent_block,
+    recover_checkpoint_gates,
 )
-from .ledger import JsonValue, state_dir
+from .agent_log import ledger_transaction
+from .ledger import JsonObject, JsonValue, load_ledger, save_ledger, state_dir
 from .risk_terms import risk_flags
+from .scorecard import GateAction, ReasonCode, Resolution, ScorecardSchemaError
+from .scorecard_store import (
+    new_transition,
+    record_gate_transition_locked,
+    unresolved_block_ids,
+)
 
 Decision: TypeAlias = dict[str, JsonValue]
 
@@ -266,6 +274,60 @@ def evaluate_r1_contract(payload: Mapping[str, JsonValue]) -> Decision:
     }
 
 
+def evaluate_r1_contract_with_scorecard(
+    payload: Mapping[str, JsonValue],
+) -> Decision:
+    if not _high_risk(payload):
+        return {"decision": "allow", "message": "not high-risk"}
+    root = _project_root(payload)
+    try:
+        with ledger_transaction(root):
+            ledger = load_ledger(payload)
+            decision = evaluate_r1_contract(payload)
+            if decision.get("decision") == "block":
+                _record_r1_scorecard(ledger, payload, GateAction.BLOCK)
+                save_ledger(payload, ledger)
+                return decision
+            if _record_r1_scorecard(
+                ledger,
+                payload,
+                GateAction.RECOVER,
+                Resolution.CONTRACT,
+            ):
+                save_ledger(payload, ledger)
+            return decision
+    except (OSError, TimeoutError):
+        return evaluate_r1_contract(payload)
+
+
+def _record_r1_scorecard(
+    ledger: JsonObject,
+    payload: Mapping[str, JsonValue],
+    action: GateAction,
+    resolution: Resolution = Resolution.NONE,
+) -> bool:
+    reason_code = ReasonCode.PRETOOL_CONTRACT_MISSING
+    resolves = (
+        ()
+        if action is GateAction.BLOCK
+        else unresolved_block_ids(ledger, payload, reason_code)
+    )
+    if action is GateAction.RECOVER and not resolves:
+        return False
+    try:
+        transition = new_transition(
+            payload,
+            reason_code,
+            action,
+            resolves=resolves,
+            resolution=resolution,
+        )
+        record_gate_transition_locked(ledger, payload, transition)
+    except (OSError, ScorecardSchemaError):
+        return False
+    return True
+
+
 def _valid_contract(root: str) -> bool:
     try:
         raw = cast(object, json.loads(contract_path(root).read_text(encoding="utf-8")))
@@ -300,6 +362,11 @@ def evaluate_pretool_contract(payload: Mapping[str, JsonValue]) -> Decision:
     if tool not in GUARDED_TOOLS:
         return {"decision": "allow", "message": "not a guarded tool"}
 
+    try:
+        recover_checkpoint_gates(payload)
+    except (OSError, TimeoutError):
+        pass
+
     paths = _string_list(payload.get("file_paths"))
     command = _command(payload)
     if tool in EDIT_TOOLS and needs_intent_block(payload):
@@ -312,4 +379,4 @@ def evaluate_pretool_contract(payload: Mapping[str, JsonValue]) -> Decision:
 
     if paths and all(_is_contract_authoring(path) for path in paths):
         return {"decision": "allow", "message": "contract authoring allowed"}
-    return evaluate_r1_contract(payload)
+    return evaluate_r1_contract_with_scorecard(payload)

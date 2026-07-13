@@ -196,6 +196,29 @@ def test_save_ledger_keeps_existing_destination_when_atomic_replace_fails(tmp_pa
     assert not list(state_dir.glob("ledger-*.tmp"))
 
 
+def test_save_ledger_retries_one_transient_atomic_replace_failure(tmp_path: Path) -> None:
+    # Given: Windows denies the first atomic replacement but accepts the next attempt.
+    destination = tmp_path / ".fable-lite" / "ledger.json"
+    real_replace = ledger_module.os.replace
+    attempts = 0
+
+    def replace_after_transient_denial(source: str, target: Path) -> None:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise PermissionError("transient replace denial")
+        real_replace(source, target)
+
+    # When: the normal persistence boundary writes a valid ledger.
+    with patch.object(ledger_module.os, "replace", side_effect=replace_after_transient_denial):
+        save_ledger({"project_root": str(tmp_path)}, {"task_mode": "deep"})
+
+    # Then: one bounded retry commits the destination without leaving temp files.
+    assert attempts == 2
+    assert json.loads(destination.read_text(encoding="utf-8"))["task_mode"] == "deep"
+    assert not list(destination.parent.glob("ledger-*.tmp"))
+
+
 def test_corrupt_ledger_backup_keeps_existing_bak_and_creates_unique_suffix(tmp_path: Path) -> None:
     # Given: an old backup and a new unreadable ledger in the same isolated state directory.
     state_dir = tmp_path / ".fable-lite"

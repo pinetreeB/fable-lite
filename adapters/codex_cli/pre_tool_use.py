@@ -48,6 +48,7 @@ def main() -> int:
                 "agent": invocation.agent,
                 "session_id": invocation.session_id,
                 "turn_id": invocation.turn_id,
+                "attribution": invocation.scorecard_attribution,
             }
         )
         if result["decision"] == "block":

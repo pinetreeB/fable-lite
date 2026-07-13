@@ -190,3 +190,32 @@ def test_owner_lock_preserves_access_denied_when_the_lock_path_is_absent(tmp_pat
             raise AssertionError("missing lock path must preserve access denial")
 
     assert "access denied" in failure
+
+
+def test_owner_lock_retries_one_transient_access_denied_when_path_is_absent(
+    tmp_path: Path,
+) -> None:
+    # Given: Windows denies the first exclusive create while no lock file exists.
+    state = tmp_path / ".fable-lite"
+    state.mkdir()
+    lock = state / "ledger.lock"
+    real_open = agent_log.os.open
+    attempts = 0
+
+    def open_after_transient_denial(
+        path: str | bytes | os.PathLike[str], flags: int, mode: int = 0o777
+    ) -> int:
+        nonlocal attempts
+        if path == lock and flags & os.O_EXCL:
+            attempts += 1
+            if attempts == 1:
+                raise PermissionError(errno.EACCES, "transient access denied", str(lock))
+        return real_open(path, flags, mode)
+
+    # When: the owner lock is acquired through the production primitive.
+    with patch.object(agent_log.os, "open", side_effect=open_after_transient_denial):
+        with agent_log._owned_lock(lock, time.monotonic() + 1):
+            assert lock.exists()
+
+    # Then: one bounded retry absorbs the transient denial.
+    assert attempts == 2

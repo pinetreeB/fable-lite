@@ -7,6 +7,12 @@ from .agent_log import ledger_transaction
 from .intent import has_intent
 from .ledger import JsonValue, load_ledger, save_ledger, state_dir
 from .ledger_v2 import refresh_v1_projection
+from .scorecard import GateAction, ReasonCode, Resolution, ScorecardSchemaError
+from .scorecard_store import (
+    new_transition,
+    record_gate_transition_locked,
+    unresolved_block_ids,
+)
 from .verification_covers import active_turn
 
 
@@ -25,6 +31,35 @@ def needs_intent_block(payload: Mapping[str, JsonValue]) -> bool:
     return _gate_required(load_ledger(payload), payload, "intent_required") and not has_intent(root)
 
 
+def recover_checkpoint_gates(payload: Mapping[str, JsonValue]) -> None:
+    root = _project_root(payload)
+    goals_present = _goals_present(root)
+    intent_present = has_intent(root)
+    if not goals_present and not intent_present:
+        return
+    with ledger_transaction(root):
+        ledger = load_ledger(payload)
+        recorded = False
+        if goals_present:
+            recorded = _record_scorecard(
+                ledger,
+                payload,
+                ReasonCode.PRETOOL_GOALS_MISSING,
+                GateAction.RECOVER,
+                Resolution.GOALS_CHECKPOINT,
+            ) or recorded
+        if intent_present:
+            recorded = _record_scorecard(
+                ledger,
+                payload,
+                ReasonCode.PRETOOL_INTENT_MISSING,
+                GateAction.RECOVER,
+                Resolution.INTENT_CHECKPOINT,
+            ) or recorded
+        if recorded:
+            save_ledger(payload, ledger)
+
+
 def block_goals_once(payload: Mapping[str, JsonValue]) -> Decision:
     root = _project_root(payload)
     goals_present = _goals_present(root)
@@ -32,14 +67,35 @@ def block_goals_once(payload: Mapping[str, JsonValue]) -> Decision:
     with ledger_transaction(root):
         ledger = load_ledger(payload)
         if not _gate_required(ledger, payload, "needs_goals") or goals_present:
+            if goals_present and _record_scorecard(
+                ledger,
+                payload,
+                ReasonCode.PRETOOL_GOALS_MISSING,
+                GateAction.RECOVER,
+                Resolution.GOALS_CHECKPOINT,
+            ):
+                save_ledger(payload, ledger)
             return {"decision": "allow", "message": "goals checkpoint is present"}
         blocks = _counter_value(ledger, payload, "goals_blocks")
         if blocks >= MAX_GOALS_BLOCKS:
+            _record_scorecard(
+                ledger,
+                payload,
+                ReasonCode.PRETOOL_GOALS_MISSING,
+                GateAction.CAP_ALLOW,
+            )
+            save_ledger(payload, ledger)
             return {
                 "decision": "allow",
                 "message": "goals gate max 2 blocks reached; fail-open allow",
             }
         _set_counter(ledger, payload, "goals_blocks", blocks + 1)
+        _record_scorecard(
+            ledger,
+            payload,
+            ReasonCode.PRETOOL_GOALS_MISSING,
+            GateAction.BLOCK,
+        )
         save_ledger(payload, ledger)
     return {
         "decision": "block",
@@ -58,14 +114,35 @@ def block_intent_once(payload: Mapping[str, JsonValue], intent_command: str) -> 
     with ledger_transaction(root):
         ledger = load_ledger(payload)
         if not _gate_required(ledger, payload, "intent_required") or intent_present:
+            if intent_present and _record_scorecard(
+                ledger,
+                payload,
+                ReasonCode.PRETOOL_INTENT_MISSING,
+                GateAction.RECOVER,
+                Resolution.INTENT_CHECKPOINT,
+            ):
+                save_ledger(payload, ledger)
             return {"decision": "allow", "message": "intent checkpoint is present"}
         blocks = _counter_value(ledger, payload, "intent_blocks")
         if blocks >= MAX_INTENT_BLOCKS:
+            _record_scorecard(
+                ledger,
+                payload,
+                ReasonCode.PRETOOL_INTENT_MISSING,
+                GateAction.CAP_ALLOW,
+            )
+            save_ledger(payload, ledger)
             return {
                 "decision": "allow",
                 "message": "intent gate max 2 blocks reached; fail-open allow",
             }
         _set_counter(ledger, payload, "intent_blocks", blocks + 1)
+        _record_scorecard(
+            ledger,
+            payload,
+            ReasonCode.PRETOOL_INTENT_MISSING,
+            GateAction.BLOCK,
+        )
         save_ledger(payload, ledger)
     return {
         "decision": "block",
@@ -125,3 +202,31 @@ def _has_turn_identity(payload: Mapping[str, JsonValue]) -> bool:
         isinstance(payload.get(field), str) and bool(payload.get(field))
         for field in ("agent", "session_id")
     )
+
+
+def _record_scorecard(
+    ledger: dict[str, JsonValue],
+    payload: Mapping[str, JsonValue],
+    reason_code: ReasonCode,
+    action: GateAction,
+    resolution: Resolution = Resolution.NONE,
+) -> bool:
+    resolves = (
+        ()
+        if action is GateAction.BLOCK
+        else unresolved_block_ids(ledger, payload, reason_code)
+    )
+    if action is not GateAction.BLOCK and not resolves:
+        return False
+    try:
+        transition = new_transition(
+            payload,
+            reason_code,
+            action,
+            resolves=resolves,
+            resolution=resolution,
+        )
+        record_gate_transition_locked(ledger, payload, transition)
+    except (OSError, ScorecardSchemaError):
+        return False
+    return True

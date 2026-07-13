@@ -110,7 +110,17 @@ def _acquire_owner_lock(path: Path, deadline: float, owner: str) -> int:
             descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600)
         except (FileExistsError, PermissionError) as exc:
             if isinstance(exc, PermissionError) and not path.exists():
-                raise
+                time.sleep(0.01)
+                try:
+                    descriptor = os.open(
+                        path, os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600
+                    )
+                except PermissionError:
+                    raise exc
+                except FileExistsError:
+                    pass
+                if descriptor is not None:
+                    continue
             stale = _stale_record(path)
             if stale is not None and _unlink_matching_record(path, stale):
                 continue

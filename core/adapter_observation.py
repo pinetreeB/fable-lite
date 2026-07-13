@@ -31,10 +31,15 @@ class CanonicalInvocation:
     command_hint: str
     success: bool
     evidence: str
+    identity_synthetic: bool = False
 
     @property
     def agent_key(self) -> str:
         return f"{self.host}:{self.session_id}:{self.agent}"
+
+    @property
+    def scorecard_attribution(self) -> str:
+        return "legacy_default" if self.identity_synthetic else "exact"
 
     def as_dict(self) -> JsonObject:
         return {
@@ -136,11 +141,20 @@ def finish_turn(root: Path, invocation: CanonicalInvocation) -> ObservationRepor
 
 
 def verification_covers(root: Path, invocation: CanonicalInvocation) -> JsonObject | None:
-    return _stored_covers(root, _active_invocation(root, invocation))
+    resolved = _active_invocation(root, invocation)
+    return _stored_covers(root, resolved) or _covers(root, resolved)
 
 
 def resolve_active_invocation(root: Path, invocation: CanonicalInvocation) -> CanonicalInvocation:
     return _active_invocation(root, invocation)
+
+
+def restart_blocked_turn(root: Path, invocation: CanonicalInvocation) -> None:
+    ledger = load_ledger({"project_root": str(root)})
+    turns = ledger.get("active_turns")
+    if not isinstance(turns, dict) or not isinstance(turns.get(invocation.agent_key), dict):
+        return
+    _ = start_turn(root, invocation)
 
 
 def _report(result: ObservationResult, baseline_snapshot_id: str) -> ObservationReport:
@@ -213,6 +227,7 @@ def _ledger_payload(root: Path, invocation: CanonicalInvocation) -> JsonObject:
         "session_id": invocation.session_id,
         "turn_id": invocation.turn_id,
         "invocation_id": invocation.invocation_id,
+        "attribution": invocation.scorecard_attribution,
     }
 
 

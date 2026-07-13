@@ -3,6 +3,10 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import tempfile
+import time
+
+
+REPLACE_RETRY_DELAY_SECONDS = 0.01
 
 
 def state_dir(project_root: str) -> Path:
@@ -28,7 +32,7 @@ def atomic_write_text(destination: Path, serialized: str, prefix: str = "ledger-
     try:
         with handle:
             _ = handle.write(serialized)
-        os.replace(temporary, destination)
+        _replace_with_one_retry(temporary, destination)
     except OSError:
         temporary.unlink(missing_ok=True)
         raise
@@ -47,7 +51,18 @@ def atomic_write_bytes(destination: Path, content: bytes, prefix: str = "ledger-
     try:
         with handle:
             _ = handle.write(content)
-        os.replace(temporary, destination)
+        _replace_with_one_retry(temporary, destination)
     except OSError:
         temporary.unlink(missing_ok=True)
         raise
+
+
+def _replace_with_one_retry(source: Path, destination: Path) -> None:
+    try:
+        os.replace(source, destination)
+    except PermissionError as first_error:
+        time.sleep(REPLACE_RETRY_DELAY_SECONDS)
+        try:
+            os.replace(source, destination)
+        except OSError:
+            raise first_error

@@ -98,7 +98,7 @@ def main() -> int:
             project_root,
             read_payload,
         )
-        from core.adapter_observation import finish_turn, resolve_active_invocation
+        from core.adapter_observation import finish_turn, resolve_active_invocation, restart_blocked_turn
         from core.verify_state import evaluate_stop
 
         payload = read_payload()
@@ -110,18 +110,15 @@ def main() -> int:
             "project_root": project_root_value,
             "stop_hook_active": payload.get("stop_hook_active") is True,
             "assistant_text": last_assistant_text(payload),
+            "host": invocation.host,
+            "agent": invocation.agent,
+            "session_id": invocation.session_id,
+            "turn_id": invocation.turn_id,
+            "attribution": invocation.scorecard_attribution,
         }
-        if isinstance(payload.get("agent"), str) and payload.get("agent"):
-            stop_payload.update(
-                {
-                    "host": invocation.host,
-                    "agent": invocation.agent,
-                    "session_id": invocation.session_id,
-                    "turn_id": invocation.turn_id,
-                }
-            )
         result = evaluate_stop(stop_payload)
         if result["decision"] == "block":
+            restart_blocked_turn(Path(project_root_value), invocation)
             return emit({"decision": "block", "reason": str(result["reason"])})
         message = str(result.get("message", "[smtw] Stop gate allow."))
         _run_process_reaper(root, project_root_value)

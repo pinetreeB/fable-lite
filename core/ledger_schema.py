@@ -171,7 +171,87 @@ def validate_v2_ledger(value: JsonValue) -> JsonObject:
                 _reject(f"{field}.migration_mode", "must equal legacy_turn")
         if "legacy_seq_less" in turn:
             _boolean(turn["legacy_seq_less"], f"{field}.legacy_seq_less")
+    if "scorecard_cache" in ledger:
+        _validate_scorecard_cache(ledger["scorecard_cache"])
+    if "scorecard_journal_offset" in ledger:
+        _nonnegative_integer(
+            ledger["scorecard_journal_offset"],
+            "ledger.scorecard_journal_offset",
+        )
+    if "scorecard_evicted_keys" in ledger:
+        _validate_scorecard_evicted_keys(ledger["scorecard_evicted_keys"])
     return ledger
+
+
+def _validate_scorecard_cache(value: JsonValue) -> None:
+    cache = _object(value, "ledger.scorecard_cache")
+    if len(cache) > 64:
+        _reject("ledger.scorecard_cache", "must contain at most 64 sessions")
+    for key, raw_entry in cache.items():
+        _string(key, "ledger.scorecard_cache key")
+        field = f"ledger.scorecard_cache.{key}"
+        entry = _object(raw_entry, field)
+        host = _string(_required(entry, "host", field), f"{field}.host")
+        session_id = _string(
+            _required(entry, "session_id", field), f"{field}.session_id"
+        )
+        agent = _string(_required(entry, "agent", field), f"{field}.agent")
+        _string(_required(entry, "activated_at", field), f"{field}.activated_at")
+        if key != f"{host}:{session_id}:{agent}":
+            _reject(field, "key must match host:session_id:agent")
+        latest_turn_id = _required(entry, "latest_turn_id", field)
+        if not isinstance(latest_turn_id, str):
+            _reject(f"{field}.latest_turn_id", "must be a string")
+        for name in ("observed", "complete"):
+            _boolean(_required(entry, name, field), f"{field}.{name}")
+        for name in (
+            "blocked_attempts",
+            "recovered_scopes",
+            "resolved_attempts",
+            "cap_allows",
+        ):
+            _nonnegative_integer(_required(entry, name, field), f"{field}.{name}")
+        _string_list(
+            _required(entry, "unresolved_block_ids", field),
+            f"{field}.unresolved_block_ids",
+        )
+        for name in ("first_occurred_at", "last_occurred_at"):
+            timestamp = _required(entry, name, field)
+            if timestamp is not None:
+                _string(timestamp, f"{field}.{name}")
+        if "seen_event_ids" in entry:
+            _string_list(entry["seen_event_ids"], f"{field}.seen_event_ids")
+        if "recovered_scope_keys" in entry:
+            _string_list(entry["recovered_scope_keys"], f"{field}.recovered_scope_keys")
+        if "unresolved_reasons" in entry:
+            reasons = _object(entry["unresolved_reasons"], f"{field}.unresolved_reasons")
+            for event_id, reason in reasons.items():
+                _string(event_id, f"{field}.unresolved_reasons key")
+                _string(reason, f"{field}.unresolved_reasons.{event_id}")
+        if "by_reason" in entry:
+            rows = _object(entry["by_reason"], f"{field}.by_reason")
+            for reason, raw_row in rows.items():
+                _string(reason, f"{field}.by_reason key")
+                row = _object(raw_row, f"{field}.by_reason.{reason}")
+                for name in (
+                    "blocked_attempts",
+                    "recovered_scopes",
+                    "resolved_attempts",
+                    "cap_allows",
+                ):
+                    _nonnegative_integer(
+                        _required(row, name, f"{field}.by_reason.{reason}"),
+                        f"{field}.by_reason.{reason}.{name}",
+                    )
+
+
+def _validate_scorecard_evicted_keys(value: JsonValue) -> None:
+    field = "ledger.scorecard_evicted_keys"
+    keys = _string_list(value, field)
+    if len(keys) > 64:
+        _reject(field, "must contain at most 64 sessions")
+    if len(keys) != len(set(keys)):
+        _reject(field, "must not contain duplicate sessions")
 
 
 def serialize_v2_ledger(value: JsonValue) -> str:

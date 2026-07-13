@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import os
 from typing import TypeAlias
 
 from .agent_log import ledger_transaction
@@ -8,11 +9,26 @@ from .ledger import JsonObject, JsonValue, load_ledger, save_ledger
 from .ledger_v1 import sequence_value
 from .ledger_v2 import refresh_v1_projection
 from .compliance import check_investigation_compliance
+from .scorecard import (
+    GateAction,
+    ReasonCode,
+    Resolution,
+    ScorecardSchemaError,
+    render_stop_line,
+)
+from .scorecard_store import (
+    cached_session_summary,
+    mark_cached_session_incomplete,
+    new_transition,
+    record_gate_transition_locked,
+    unresolved_block_ids,
+)
 from .verification_covers import active_turn, covers_verified
 
 Decision: TypeAlias = dict[str, JsonValue]
 
 MAX_STOP_BLOCKS = 2
+SCORECARD_ENV = "FABLE_LITE_SCORECARD"
 
 
 def _as_str_list(value: JsonValue | None) -> list[str]:
@@ -118,13 +134,24 @@ def _increment_stop_block(ledger: JsonObject, payload: Mapping[str, JsonValue]) 
 def _record_stop_block(
     payload: Mapping[str, JsonValue], ledger: JsonObject, decision: Decision
 ) -> Decision:
+    reason_code = _decision_reason(decision)
     if _stop_blocks(ledger, payload) >= MAX_STOP_BLOCKS:
+        _record_scorecard(
+            ledger,
+            payload,
+            reason_code,
+            GateAction.CAP_ALLOW,
+        )
+        if not save_ledger(payload, ledger):
+            mark_cached_session_incomplete(ledger, payload)
         return {
             "decision": "allow",
             "message": "최대 2회 차단 후 통과합니다 / allowing after max 2 blocks.",
         }
     _increment_stop_block(ledger, payload)
-    save_ledger(payload, ledger)
+    _record_scorecard(ledger, payload, reason_code, GateAction.BLOCK)
+    if not save_ledger(payload, ledger):
+        mark_cached_session_incomplete(ledger, payload)
     return decision
 
 
@@ -144,6 +171,7 @@ def evaluate_without_io(
     ):
         return {
             "decision": "block",
+            "reason_code": ReasonCode.STOP_PROVENANCE_INCOMPLETE.value,
             "reason": (
                 "[smtw] Stop gate: provenance 관측이 불완전하여 clean을 주장할 수 없습니다. "
                 "재시도 가능한 관측 또는 검증을 수행하세요. "
@@ -157,6 +185,7 @@ def evaluate_without_io(
         if compliance["compliant"] is not True:
             return {
                 "decision": "block",
+                "reason_code": ReasonCode.STOP_INVESTIGATION_MARKERS.value,
                 "reason": (
                     "[smtw] N1: 조사 팩 마커가 부족합니다. "
                     "`가설 1:`/`Hypothesis 1:`, `증거:`/`Evidence:`, `기각:`/`Rejected:`를 포함하세요. "
@@ -173,6 +202,7 @@ def evaluate_without_io(
 
     return {
         "decision": "block",
+        "reason_code": ReasonCode.STOP_VERIFICATION_MISSING.value,
         "reason": (
             "[smtw] Stop gate: 변경 파일이 있지만 성공한 검증 증거가 없습니다. "
             "가장 좁은 테스트/실행 관측을 수행하고 evidence를 기록하세요. "
@@ -188,5 +218,105 @@ def evaluate_stop(payload: Mapping[str, JsonValue]) -> Decision:
         ledger = load_ledger(payload)
         decision = evaluate_without_io(ledger, payload)
         if decision.get("decision") != "block":
-            return decision
-        return _record_stop_block(payload, ledger, decision)
+            if _record_stop_recoveries(ledger, payload):
+                if not save_ledger(payload, ledger):
+                    mark_cached_session_incomplete(ledger, payload)
+            return _with_scorecard_line(decision, ledger, payload)
+        gated = _record_stop_block(payload, ledger, decision)
+        return _with_scorecard_line(gated, ledger, payload)
+
+
+def _with_scorecard_line(
+    decision: Decision,
+    ledger: Mapping[str, JsonValue],
+    payload: Mapping[str, JsonValue],
+) -> Decision:
+    if decision.get("decision") != "allow" or os.environ.get(SCORECARD_ENV) == "0":
+        return decision
+    try:
+        summary = cached_session_summary(ledger, payload)
+    except ScorecardSchemaError:
+        return decision
+    line = render_stop_line(summary) if summary is not None else None
+    if line is None:
+        return decision
+    message = decision.get("message")
+    base = message if isinstance(message, str) and message else "[smtw] Stop gate allow."
+    return decision | {"message": f"{base}\n{line}"}
+
+
+def _record_stop_recoveries(
+    ledger: JsonObject, payload: Mapping[str, JsonValue]
+) -> bool:
+    recorded = False
+    turn = active_turn(ledger, payload)
+    state: Mapping[str, JsonValue] = turn if turn is not None else ledger
+    if (
+        state.get("provenance_incomplete") is not True
+        and state.get("provenance_mutation_capable") is True
+    ):
+        recorded = _record_scorecard(
+            ledger,
+            payload,
+            ReasonCode.STOP_PROVENANCE_INCOMPLETE,
+            GateAction.RECOVER,
+            Resolution.OBSERVATION,
+        ) or recorded
+    if _requires_investigation_compliance(state):
+        compliance = check_investigation_compliance({"text": _assistant_text(payload)})
+        if compliance["compliant"] is True:
+            recorded = _record_scorecard(
+                ledger,
+                payload,
+                ReasonCode.STOP_INVESTIGATION_MARKERS,
+                GateAction.RECOVER,
+                Resolution.MARKERS,
+            ) or recorded
+    if has_successful_verification(ledger, payload):
+        recorded = _record_scorecard(
+            ledger,
+            payload,
+            ReasonCode.STOP_VERIFICATION_MISSING,
+            GateAction.RECOVER,
+            Resolution.VERIFICATION,
+        ) or recorded
+    return recorded
+
+
+def _record_scorecard(
+    ledger: JsonObject,
+    payload: Mapping[str, JsonValue],
+    reason_code: ReasonCode,
+    action: GateAction,
+    resolution: Resolution = Resolution.NONE,
+) -> bool:
+    resolves = (
+        ()
+        if action is GateAction.BLOCK
+        else unresolved_block_ids(ledger, payload, reason_code)
+    )
+    if action is GateAction.CAP_ALLOW and not resolves:
+        resolves = unresolved_block_ids(ledger, payload)
+    if action is not GateAction.BLOCK and not resolves:
+        return False
+    try:
+        transition = new_transition(
+            payload,
+            reason_code,
+            action,
+            resolves=resolves,
+            resolution=resolution,
+        )
+        record_gate_transition_locked(ledger, payload, transition)
+    except (OSError, ScorecardSchemaError):
+        return False
+    return True
+
+
+def _decision_reason(decision: Mapping[str, JsonValue]) -> ReasonCode:
+    value = decision.get("reason_code")
+    return (
+        ReasonCode(value)
+        if isinstance(value, str)
+        else ReasonCode.STOP_VERIFICATION_MISSING
+    )

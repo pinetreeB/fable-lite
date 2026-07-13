@@ -134,6 +134,7 @@ def canonical_invocation(
 ) -> CanonicalInvocation:
     from core.adapter_observation import CanonicalInvocation
 
+    identity_synthetic = not _string(payload.get("session_id"))
     session_id = _string(payload.get("session_id")) or "default"
     agent = _string(payload.get("agent")) or "claude"
     turn_id = _string(payload.get("turn_id")) or f"turn:{session_id}"
@@ -152,6 +153,7 @@ def canonical_invocation(
         command_hint,
         success,
         evidence,
+        identity_synthetic,
     )
 
 

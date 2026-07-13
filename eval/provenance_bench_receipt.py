@@ -9,7 +9,7 @@ import tempfile
 from core.ledger_schema import JsonValue
 
 from .provenance_bench_metrics import MIB, budgets_for_scale
-from .provenance_bench_models import BenchResult, ScaleResult
+from .provenance_bench_models import BenchResult, ScaleResult, ScorecardBenchResult
 
 
 def write_receipt(path: Path, result: BenchResult, seed: int) -> None:
@@ -26,14 +26,36 @@ def _receipt(result: BenchResult, seed: int) -> dict[str, JsonValue]:
         _scale_key(scale.file_count): _slo_value(result, scale)
         for scale in result.scales
     }
-    return {
+    receipt: dict[str, JsonValue] = {
         "schema_version": 2,
         "platform": os.name,
         "seed": seed,
         "scales": [_scale_value(result, scale) for scale in result.scales],
         "slo": {"passed": result.slo.passed, "failures": list(result.slo.failures), "scales": scale_slos},
         "stress": asdict(result.stress),
-        "hard_gate": {"passed": result.slo.passed and all(scale.ledger_valid for scale in result.scales)},
+        "hard_gate": {
+            "passed": result.slo.passed
+            and all(scale.ledger_valid for scale in result.scales)
+            and (result.scorecard is None or result.scorecard.hard_gate.passed)
+        },
+    }
+    if result.scorecard is not None:
+        receipt["scorecard"] = _scorecard_value(result.scorecard)
+    return receipt
+
+
+def _scorecard_value(result: ScorecardBenchResult) -> dict[str, JsonValue]:
+    return {
+        "warmups": result.warmups,
+        "measurements": result.measurements,
+        "phases": {
+            phase_name: {arm: asdict(stats) for arm, stats in arms.items()}
+            for phase_name, arms in result.phases.items()
+        },
+        "hard_gate": {
+            "passed": result.hard_gate.passed,
+            "failures": list(result.hard_gate.failures),
+        },
     }
 
 

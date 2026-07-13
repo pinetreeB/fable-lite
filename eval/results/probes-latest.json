@@ -26,7 +26,7 @@
                 "ambiguity_score": 0,
                 "baseline_snapshot_id": "blake2b-256:c2c013c86a9c92e22f966f3d8617768f8b7a44c902adcc097bfa1e098afb4e1f",
                 "blocks": {
-                  "stop": 0
+                  "stop": 1
                 },
                 "change_audit": [
                   {
@@ -42,7 +42,7 @@
                 "changed_files_seen": [
                   "index.html"
                 ],
-                "current_snapshot_id": "blake2b-256:ca2a8eebc78c0f1cc49afaf838d2e9a4429cfada1d4cc1e425df0240ccec51a6",
+                "current_snapshot_id": "blake2b-256:bbf6183b36bb0642f17c4d88ad68230141574eaa94a2e093391445941377c22f",
                 "event_seq": 4,
                 "goals_blocks": 0,
                 "intent_blocks": 0,
@@ -72,6 +72,7 @@
                 "provenance_mutation_capable": true,
                 "requires_investigation_compliance": false,
                 "scope_warnings": [],
+                "scorecard_observed": true,
                 "start_seq": 1,
                 "stop_blocks": 0,
                 "task_mode": "normal",
@@ -102,6 +103,43 @@
             "requires_investigation_compliance": false,
             "schema_version": 2,
             "scope_warnings": [],
+            "scorecard_cache": {
+              "claude_code:default:claude": {
+                "activated_at": "2026-07-13T19:09:35.761593+00:00",
+                "agent": "claude",
+                "blocked_attempts": 1,
+                "by_reason": {
+                  "stop.verification_missing": {
+                    "blocked_attempts": 1,
+                    "cap_allows": 0,
+                    "recovered_scopes": 0,
+                    "resolved_attempts": 0
+                  }
+                },
+                "cap_allows": 0,
+                "complete": true,
+                "first_occurred_at": "2026-07-13T19:09:35.761593+00:00",
+                "host": "claude_code",
+                "last_occurred_at": "2026-07-13T19:09:35.761593+00:00",
+                "latest_turn_id": "turn:default",
+                "observed": true,
+                "recovered_scope_keys": [],
+                "recovered_scopes": 0,
+                "resolved_attempts": 0,
+                "seen_event_ids": [
+                  "22ab040e-f828-42f1-bc16-b8e36ff6d26f"
+                ],
+                "session_id": "default",
+                "unresolved_block_ids": [
+                  "22ab040e-f828-42f1-bc16-b8e36ff6d26f"
+                ],
+                "unresolved_reasons": {
+                  "22ab040e-f828-42f1-bc16-b8e36ff6d26f": "stop.verification_missing"
+                }
+              }
+            },
+            "scorecard_evicted_keys": [],
+            "scorecard_journal_offset": 366,
             "stop_blocks": 1,
             "task_mode": "normal",
             "verification_commands": [],
@@ -156,6 +194,7 @@
                 "provenance_incomplete": false,
                 "requires_investigation_compliance": false,
                 "scope_warnings": [],
+                "scorecard_observed": true,
                 "start_seq": 1,
                 "stop_blocks": 0,
                 "task_mode": "deep",
@@ -183,6 +222,43 @@
             "requires_investigation_compliance": false,
             "schema_version": 2,
             "scope_warnings": [],
+            "scorecard_cache": {
+              "claude_code:default:claude": {
+                "activated_at": "2026-07-13T19:09:36.736871+00:00",
+                "agent": "claude",
+                "blocked_attempts": 1,
+                "by_reason": {
+                  "pretool.goals_missing": {
+                    "blocked_attempts": 1,
+                    "cap_allows": 0,
+                    "recovered_scopes": 0,
+                    "resolved_attempts": 0
+                  }
+                },
+                "cap_allows": 0,
+                "complete": true,
+                "first_occurred_at": "2026-07-13T19:09:36.736871+00:00",
+                "host": "claude_code",
+                "last_occurred_at": "2026-07-13T19:09:36.736871+00:00",
+                "latest_turn_id": "turn:default",
+                "observed": true,
+                "recovered_scope_keys": [],
+                "recovered_scopes": 0,
+                "resolved_attempts": 0,
+                "seen_event_ids": [
+                  "4a73350b-1bcc-4b92-b447-02ec0d880659"
+                ],
+                "session_id": "default",
+                "unresolved_block_ids": [
+                  "4a73350b-1bcc-4b92-b447-02ec0d880659"
+                ],
+                "unresolved_reasons": {
+                  "4a73350b-1bcc-4b92-b447-02ec0d880659": "pretool.goals_missing"
+                }
+              }
+            },
+            "scorecard_evicted_keys": [],
+            "scorecard_journal_offset": 362,
             "stop_blocks": 0,
             "task_mode": "deep",
             "verification_commands": [],
@@ -246,7 +322,7 @@
                 "changed_files_seen": [
                   "README.md"
                 ],
-                "current_snapshot_id": "blake2b-256:080655840c66f968f333df2fbde10d48f42eac3ca466a4490924a9a02881a276",
+                "current_snapshot_id": "blake2b-256:7766e9d0657ec2045857cfcc19df77add0c4e5791bda015ebe0c965a2cf145ec",
                 "event_seq": 4,
                 "goals_blocks": 0,
                 "intent_blocks": 0,
@@ -370,7 +446,7 @@
         "observed": {
           "returncode": 0,
           "stderr_tail": "C:\\Python312\\Lib\\site-packages\\requests\\__init__.py:113: RequestsDependencyWarning: urllib3 (2.6.3) or chardet (7.0.1)/charset_normalizer (3.4.4) doesn't match a supported version!\n  warnings.warn(\n",
-          "stdout_tail": "============================= test session starts =============================\nplatform win32 -- Python 3.12.8, pytest-9.0.3, pluggy-1.6.0\nrootdir: C:\\Users\\rotat\\fable-lite\nconfigfile: pyproject.toml\nplugins: anyio-4.12.1, hydra-core-1.3.2, langsmith-0.7.22, asyncio-1.3.0, typeguard-4.5.1\nasyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function\ncollected 33 items\n\ntests\\test_core_contracts.py .................................           [100%]\n\n============================= 33 passed in 0.20s ==============================\n"
+          "stdout_tail": "============================= test session starts =============================\nplatform win32 -- Python 3.12.8, pytest-9.0.3, pluggy-1.6.0\nrootdir: C:\\Users\\rotat\\fable-lite\nconfigfile: pyproject.toml\nplugins: anyio-4.12.1, hydra-core-1.3.2, langsmith-0.7.22, asyncio-1.3.0, typeguard-4.5.1\nasyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function\ncollected 33 items\n\ntests\\test_core_contracts.py .................................           [100%]\n\n============================= 33 passed in 0.65s ==============================\n"
         },
         "status": "pass"
       },
@@ -492,7 +568,7 @@
         "observed": {
           "returncode": 0,
           "stderr_tail": "C:\\Python312\\Lib\\site-packages\\requests\\__init__.py:113: RequestsDependencyWarning: urllib3 (2.6.3) or chardet (7.0.1)/charset_normalizer (3.4.4) doesn't match a supported version!\n  warnings.warn(\n",
-          "stdout_tail": "============================= test session starts =============================\nplatform win32 -- Python 3.12.8, pytest-9.0.3, pluggy-1.6.0\nrootdir: C:\\Users\\rotat\\fable-lite\nconfigfile: pyproject.toml\nplugins: anyio-4.12.1, hydra-core-1.3.2, langsmith-0.7.22, asyncio-1.3.0, typeguard-4.5.1\nasyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function\ncollected 47 items\n\ntests\\test_adapters.py ............                                      [ 25%]\ntests\\test_core_contracts.py .................................           [ 95%]\ntests\\test_goals_cli.py ..                                               [100%]\n\n============================= 47 passed in 3.37s ==============================\n"
+          "stdout_tail": "============================= test session starts =============================\nplatform win32 -- Python 3.12.8, pytest-9.0.3, pluggy-1.6.0\nrootdir: C:\\Users\\rotat\\fable-lite\nconfigfile: pyproject.toml\nplugins: anyio-4.12.1, hydra-core-1.3.2, langsmith-0.7.22, asyncio-1.3.0, typeguard-4.5.1\nasyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function\ncollected 47 items\n\ntests\\test_adapters.py ............                                      [ 25%]\ntests\\test_core_contracts.py .................................           [ 95%]\ntests\\test_goals_cli.py ..                                               [100%]\n\n============================= 47 passed in 12.02s =============================\n"
         },
         "status": "pass"
       },
@@ -573,7 +649,7 @@
                 "ambiguity_score": 2,
                 "baseline_snapshot_id": "blake2b-256:c2c013c86a9c92e22f966f3d8617768f8b7a44c902adcc097bfa1e098afb4e1f",
                 "blocks": {
-                  "stop": 0
+                  "stop": 1
                 },
                 "change_audit": [
                   {
@@ -589,7 +665,7 @@
                 "changed_files_seen": [
                   "app.py"
                 ],
-                "current_snapshot_id": "blake2b-256:9555b158ef32b49c485deeb9e9b4b58f627f4a7e789efd6456e3a6006457abe6",
+                "current_snapshot_id": "blake2b-256:4f8b07e3576ddfcf2116fe38d15f9e8355ce3c9639d9aff028798587045b468d",
                 "event_seq": 4,
                 "goals_blocks": 0,
                 "intent_blocks": 0,
@@ -620,6 +696,7 @@
                 "provenance_mutation_capable": true,
                 "requires_investigation_compliance": true,
                 "scope_warnings": [],
+                "scorecard_observed": true,
                 "start_seq": 1,
                 "stop_blocks": 0,
                 "task_mode": "deep",
@@ -651,6 +728,43 @@
             "requires_investigation_compliance": true,
             "schema_version": 2,
             "scope_warnings": [],
+            "scorecard_cache": {
+              "claude_code:default:claude": {
+                "activated_at": "2026-07-13T19:10:04.107597+00:00",
+                "agent": "claude",
+                "blocked_attempts": 1,
+                "by_reason": {
+                  "stop.investigation_markers": {
+                    "blocked_attempts": 1,
+                    "cap_allows": 0,
+                    "recovered_scopes": 0,
+                    "resolved_attempts": 0
+                  }
+                },
+                "cap_allows": 0,
+                "complete": true,
+                "first_occurred_at": "2026-07-13T19:10:04.107597+00:00",
+                "host": "claude_code",
+                "last_occurred_at": "2026-07-13T19:10:04.107597+00:00",
+                "latest_turn_id": "turn:default",
+                "observed": true,
+                "recovered_scope_keys": [],
+                "recovered_scopes": 0,
+                "resolved_attempts": 0,
+                "seen_event_ids": [
+                  "369a3971-f347-46da-a513-1f7d7b504dc0"
+                ],
+                "session_id": "default",
+                "unresolved_block_ids": [
+                  "369a3971-f347-46da-a513-1f7d7b504dc0"
+                ],
+                "unresolved_reasons": {
+                  "369a3971-f347-46da-a513-1f7d7b504dc0": "stop.investigation_markers"
+                }
+              }
+            },
+            "scorecard_evicted_keys": [],
+            "scorecard_journal_offset": 367,
             "stop_blocks": 1,
             "task_mode": "deep",
             "verification_commands": [],
@@ -690,7 +804,7 @@
                 "ambiguity_score": 1,
                 "baseline_snapshot_id": "blake2b-256:c2c013c86a9c92e22f966f3d8617768f8b7a44c902adcc097bfa1e098afb4e1f",
                 "blocks": {
-                  "stop": 0
+                  "stop": 2
                 },
                 "change_audit": [
                   {
@@ -706,8 +820,8 @@
                 "changed_files_seen": [
                   "app.py"
                 ],
-                "current_snapshot_id": "blake2b-256:f212e531513a864da3382ee4df2f6debb8e897cb456aec5b66f78b9aa5f35120",
-                "event_seq": 4,
+                "current_snapshot_id": "blake2b-256:2a9458a98681fa052f6f95253b63e2d0d061f41fbf9942f16d99574a69cf95e8",
+                "event_seq": 6,
                 "goals_blocks": 0,
                 "intent_blocks": 0,
                 "intent_required": false,
@@ -736,6 +850,7 @@
                 "provenance_mutation_capable": true,
                 "requires_investigation_compliance": true,
                 "scope_warnings": [],
+                "scorecard_observed": true,
                 "start_seq": 1,
                 "stop_blocks": 0,
                 "task_mode": "deep",
@@ -752,7 +867,7 @@
             "changed_files_seen": [
               "app.py"
             ],
-            "event_seq": 4,
+            "event_seq": 6,
             "goals_blocks": 0,
             "intent_blocks": 0,
             "intent_required": false,
@@ -766,6 +881,47 @@
             "requires_investigation_compliance": true,
             "schema_version": 2,
             "scope_warnings": [],
+            "scorecard_cache": {
+              "claude_code:default:claude": {
+                "activated_at": "2026-07-13T19:10:04.767102+00:00",
+                "agent": "claude",
+                "blocked_attempts": 2,
+                "by_reason": {
+                  "stop.verification_missing": {
+                    "blocked_attempts": 2,
+                    "cap_allows": 1,
+                    "recovered_scopes": 0,
+                    "resolved_attempts": 0
+                  }
+                },
+                "cap_allows": 1,
+                "complete": true,
+                "first_occurred_at": "2026-07-13T19:10:04.767102+00:00",
+                "host": "claude_code",
+                "last_occurred_at": "2026-07-13T19:10:05.479564+00:00",
+                "latest_turn_id": "turn:default",
+                "observed": true,
+                "recovered_scope_keys": [],
+                "recovered_scopes": 0,
+                "resolved_attempts": 0,
+                "seen_event_ids": [
+                  "13640228-2fbe-4405-a672-7766bdf4fbd0",
+                  "110340c6-6363-4159-9aab-74356e61879e",
+                  "cc4ec388-cfbd-401d-917a-21f5305aa283"
+                ],
+                "session_id": "default",
+                "unresolved_block_ids": [
+                  "13640228-2fbe-4405-a672-7766bdf4fbd0",
+                  "110340c6-6363-4159-9aab-74356e61879e"
+                ],
+                "unresolved_reasons": {
+                  "110340c6-6363-4159-9aab-74356e61879e": "stop.verification_missing",
+                  "13640228-2fbe-4405-a672-7766bdf4fbd0": "stop.verification_missing"
+                }
+              }
+            },
+            "scorecard_evicted_keys": [],
+            "scorecard_journal_offset": 1179,
             "stop_blocks": 2,
             "task_mode": "deep",
             "verification_commands": [],

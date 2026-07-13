@@ -22,6 +22,12 @@ SLO_BUDGETS_MS: Final = {
     1_000: {"fast_path": 200, "cold_start": 1_000, "post_tool": 200, "stop": 1_000},
     10_000: {"fast_path": 1_000, "cold_start": 6_000, "post_tool": 1_000, "stop": 6_000},
 }
+SCORECARD_PHASES: Final = (
+    "stop_allow_scorecard",
+    "gate_block_scorecard",
+    "r1_block_scorecard",
+)
+SCORECARD_MEASUREMENTS: Final = 30
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +40,7 @@ class PhaseMeasurement:
     rss_peak_bytes: int
     incomplete: bool
     full_scan: bool
+    journal_read_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +57,7 @@ class PhaseStats:
     rss_peak_bytes: int
     incomplete_count: int
     full_scan_count: int
+    journal_read_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,6 +140,7 @@ def summarize_phase(measurements: tuple[PhaseMeasurement, ...]) -> PhaseStats:
         max((item.rss_peak_bytes for item in measurements), default=0),
         sum(item.incomplete for item in measurements),
         sum(item.full_scan for item in measurements),
+        sum(item.journal_read_count for item in measurements),
     )
 
 
@@ -154,6 +163,45 @@ def evaluate_slo(phases: Mapping[str, PhaseStats], rss_peak_bytes: int, file_cou
         failures.append("fast_path_full_fallback")
     if rss_peak_bytes > 80 * MIB:
         failures.append("rss_peak")
+    return SloResult(not failures, tuple(failures))
+
+
+def evaluate_scorecard_slo(
+    phases: Mapping[str, Mapping[str, PhaseStats]],
+) -> SloResult:
+    failures: list[str] = []
+    for phase_name in SCORECARD_PHASES:
+        arms = phases.get(phase_name)
+        if arms is None:
+            failures.append(f"missing_{phase_name}")
+            continue
+        for arm in ("off", "on"):
+            stats = arms.get(arm)
+            if stats is None:
+                failures.append(f"{phase_name}_missing_{arm}")
+            elif stats.sample_count != SCORECARD_MEASUREMENTS:
+                failures.append(f"{phase_name}_{arm}_measurements")
+    stop = phases.get("stop_allow_scorecard")
+    if stop is not None and "off" in stop and "on" in stop:
+        baseline, enabled = stop["off"], stop["on"]
+        if enabled.hash_calls > baseline.hash_calls:
+            failures.append("stop_allow_scorecard_new_hash")
+        if enabled.stat_count > baseline.stat_count:
+            failures.append("stop_allow_scorecard_new_stat")
+        if enabled.full_scan_count > baseline.full_scan_count:
+            failures.append("stop_allow_scorecard_new_scan")
+        if enabled.journal_read_count:
+            failures.append("stop_allow_scorecard_new_journal_read")
+    for phase_name in ("gate_block_scorecard", "r1_block_scorecard"):
+        arms = phases.get(phase_name)
+        baseline = arms.get("off") if arms is not None else None
+        enabled = arms.get("on") if arms is not None else None
+        if baseline is None or enabled is None:
+            continue
+        if max(0, enabled.p95_ns - baseline.p95_ns) > 100_000_000:
+            failures.append(f"{phase_name}_p95")
+        if max(0, enabled.p99_ns - baseline.p99_ns) > 250_000_000:
+            failures.append(f"{phase_name}_p99")
     return SloResult(not failures, tuple(failures))
 
 

@@ -39,7 +39,7 @@ def load_ledger(payload: Mapping[str, JsonValue]) -> JsonObject:
     if isinstance(loaded, dict):
         schema_version = loaded.get("schema_version")
         if schema_version == 2:
-            return validate_v2_ledger(loaded)
+            return _validate_v2_with_derived_cache_fail_open(loaded)
         if schema_version is not None and (
             not isinstance(schema_version, int)
             or isinstance(schema_version, bool)
@@ -50,6 +50,19 @@ def load_ledger(payload: Mapping[str, JsonValue]) -> JsonObject:
         merged.update(loaded)
         return merged
     return default_ledger()
+
+
+def _validate_v2_with_derived_cache_fail_open(loaded: JsonObject) -> JsonObject:
+    try:
+        return validate_v2_ledger(loaded)
+    except LedgerSchemaError as exc:
+        if not exc.field.startswith("ledger.scorecard_"):
+            raise
+    sanitized = dict(loaded)
+    _ = sanitized.pop("scorecard_cache", None)
+    _ = sanitized.pop("scorecard_journal_offset", None)
+    _ = sanitized.pop("scorecard_evicted_keys", None)
+    return validate_v2_ledger(sanitized)
 
 
 def _preserve_corrupt_ledger(path: Path) -> None:
@@ -63,7 +76,7 @@ def _preserve_corrupt_ledger(path: Path) -> None:
         return
 
 
-def save_ledger(payload: Mapping[str, JsonValue], ledger: JsonObject) -> None:
+def save_ledger(payload: Mapping[str, JsonValue], ledger: JsonObject) -> bool:
     schema_version = ledger.get("schema_version")
     serialized = serialize_v2_ledger(ledger) if schema_version == 2 else json.dumps(
         ledger, ensure_ascii=False, indent=2, sort_keys=True
@@ -71,7 +84,8 @@ def save_ledger(payload: Mapping[str, JsonValue], ledger: JsonObject) -> None:
     try:
         atomic_write_text(ledger_path(_project_root(payload)), serialized)
     except OSError:
-        return
+        return False
+    return True
 
 
 def record_event(payload: Mapping[str, JsonValue]) -> JsonObject:

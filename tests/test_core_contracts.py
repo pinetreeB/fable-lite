@@ -411,7 +411,7 @@ def test_high_risk_contract_blocks_edit_until_valid_contract_exists(tmp_path: Pa
     payload = {"project_root": str(tmp_path), "tool_name": "Edit", "file_paths": ["migrations/001_init.sql"], "prompt": "DB 마이그 수정"}
     blocked = evaluate_pretool_contract(payload)
     state_dir = tmp_path / ".fable-lite"
-    state_dir.mkdir()
+    state_dir.mkdir(exist_ok=True)
     _ = (state_dir / "contract.json").write_text(
         json.dumps({"restated_goal": "DB 마이그레이션 수정", "acceptance": ["python -m pytest tests/test_migration.py"], "evidence": ["test will be run before done"]}, ensure_ascii=False),
         encoding="utf-8",

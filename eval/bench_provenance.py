@@ -16,6 +16,7 @@ from core.provenance_lifecycle import ProvenanceLifecycle
 from .provenance_bench_metrics import MIB, PhaseMeasurement, PhaseStats, SloResult, evaluate_slo, measure, measure_memory, summarize_phase
 from .provenance_bench_models import BenchResult, FileSpec, ScaleResult, ScenarioResult, StressResult
 from .provenance_bench_receipt import write_receipt
+from .provenance_bench_scorecard import run_scorecard_benchmark
 
 SCALE_TARGET_BYTES: Final = {1_000: 256 * MIB // 10, 10_000: 256 * MIB, 50_000: 2 * 1024 * MIB}
 DEFAULT_OUTPUT: Final = Path(__file__).resolve().parent / "results" / "bench-latest.json"
@@ -51,6 +52,7 @@ def run_benchmark(stress: bool, seed: int) -> BenchResult:
     BENCH_TMP_DIR.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="fable-provenance-bench-", dir=BENCH_TMP_DIR) as raw:
         root = Path(raw)
+        scorecard = run_scorecard_benchmark(root / "scorecard")
         small = _run_scale(root / "1k", 1_000, 5, 30, seed, False)
         standard = _run_scale(root / "10k", 10_000, 5, 30, seed, True)
         scale_slos = {
@@ -64,7 +66,7 @@ def run_benchmark(stress: bool, seed: int) -> BenchResult:
         failures = tuple(f"{count}:{failure}" for count, result in scale_slos.items() for failure in result.failures)
         slo = SloResult(all(result.passed for result in scale_slos.values()), failures)
         stress_result = _run_stress(root / "50k", seed) if stress else StressResult(False, False, "not_requested", True)
-    return BenchResult((small, standard), slo, scale_slos, stress_result)
+    return BenchResult((small, standard), slo, scale_slos, stress_result, scorecard)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -75,8 +77,13 @@ def main(argv: list[str] | None = None) -> int:
     options = parser.parse_args(argv)
     result = run_benchmark(options.stress, options.seed)
     write_receipt(options.output, result, options.seed)
-    print(f"provenance bench slo={'PASS' if result.slo.passed else 'FAIL'} stress={result.stress.reason}")
-    return 0 if result.slo.passed else 1
+    scorecard_passed = result.scorecard is not None and result.scorecard.hard_gate.passed
+    passed = result.slo.passed and scorecard_passed
+    print(
+        f"provenance bench slo={'PASS' if result.slo.passed else 'FAIL'} "
+        f"scorecard={'PASS' if scorecard_passed else 'FAIL'} stress={result.stress.reason}"
+    )
+    return 0 if passed else 1
 
 
 def _file_spec(index: int, size: int, band: str) -> FileSpec:

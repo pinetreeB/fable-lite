@@ -21,7 +21,10 @@ def active_turn(ledger: Mapping[str, JsonValue], payload: Mapping[str, JsonValue
         return None
     if payload is not None:
         turn = turns.get(agent_key(payload))
-        return turn if isinstance(turn, dict) else None
+        if isinstance(turn, dict):
+            return turn
+        legacy = turns.get("default:default:default")
+        return legacy if len(turns) == 1 and isinstance(legacy, dict) else None
     top_agent = ledger.get("agent")
     if isinstance(top_agent, str):
         for turn in turns.values():

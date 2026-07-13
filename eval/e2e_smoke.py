@@ -76,8 +76,12 @@ def main() -> int:
     r = run_hook("stop.py", {"hook_event_name": "Stop", "cwd": proj, "transcript_path": tp_bad})
     check("AC3 N1 미준수 Stop 차단", r.get("decision") == "block", f"({r.get('decision')})")
     # 준수 케이스는 정상 완료 흐름(수정→검증 성공→마커 보고)이어야 Stop 검증 게이트도 함께 통과한다.
+    _ = run_hook("pre_tool_use.py", {"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": proj,
+                                     "tool_use_id": "e2e-verification",
+                                     "tool_input": {"command": "python -m pytest"}})
     _ = run_hook("post_tool_use.py", {"hook_event_name": "PostToolUse", "tool_name": "Bash", "cwd": proj,
-                                      "tool_input": {"command": "python -m pytest tests/"},
+                                      "tool_use_id": "e2e-verification",
+                                      "tool_input": {"command": "python -m pytest"},
                                       "tool_response": {"stdout": "3 passed", "exit_code": 0}})
     tp_ok = make_transcript(proj, "가설 1: A\n가설 2: B\n가설 3: C\n증거: x.py:1 관측\n기각: 가설 2 — 반증됨")
     r2 = run_hook("stop.py", {"hook_event_name": "Stop", "cwd": proj, "transcript_path": tp_ok, "stop_hook_active": True})
