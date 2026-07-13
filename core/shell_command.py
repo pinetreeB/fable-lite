@@ -7,7 +7,7 @@ from typing import Final
 
 COMMAND_SEPARATORS: Final = frozenset({"&&", "||", ";", "|", "&"})
 _SSH_SAFE_FLAGS: Final = frozenset({"-4", "-6", "-n", "-q", "-t", "-T", "-v"})
-_SSH_VALUE_OPTIONS: Final = frozenset({"-i", "-l", "-o", "-p"})
+_SSH_VALUE_OPTIONS: Final = frozenset({"-J", "-i", "-l", "-o", "-p"})
 _SSH_SAFE_CONFIG_OPTIONS: Final = frozenset(
     {
         "batchmode",
@@ -24,7 +24,7 @@ _SSH_SAFE_CONFIG_OPTIONS: Final = frozenset(
     }
 )
 _SCP_SAFE_FLAGS: Final = frozenset({"-4", "-6", "-C", "-p", "-q", "-r", "-v"})
-_SCP_VALUE_OPTIONS: Final = frozenset({"-P", "-i"})
+_SCP_VALUE_OPTIONS: Final = frozenset({"-J", "-P", "-i", "-o"})
 _ENV_ASSIGNMENT_RE: Final = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*")
 _WINDOWS_DRIVE_RE: Final = re.compile(r"^[A-Za-z]:[\\/]")
 
