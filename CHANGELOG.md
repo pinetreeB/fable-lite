@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.0.2] - 2026-07-15
+
+### Fixed
+
+- Fixed provenance false positives that structurally blocked Stop on home-directory, large-repo, and remote-mutation sessions. Shell effects are now classified as proven-read-only, proven-remote-only, or local-or-unknown (default), and a `git status` observation no longer marks a turn mutation-capable on its own.
+- Hardened the config self-exemption path: `.fable-lite/provenance-config.json` is always tracked by the snapshot scanner, and git-tracked source paths are force-observed regardless of config `exclude`, so an agent cannot launder a backdoor by excluding a path and committing it.
+- Fixed shell tokenization so a mid-word `#` no longer swallows subsequent operators; a change command after `#` is classified local-or-unknown, not read-only.
+- Recognized loopback aliases (`127.1`, `0.0.0.0`, integer and short-form IPs, trailing-dot hostnames) so local ssh/scp edits are not misclassified as remote-only.
+- Restored fail-closed handling when a post-mutation turn baseline is missing, preventing a concurrent observer from absorbing an unverified change.
+- Attributed a deleted path to the current turn only when it existed in the turn baseline, so a pre-turn deletion no longer over-blocks a read-only turn.
+- Replaced tracked-path discovery with `git ls-tree HEAD` plus staged additions and applied Windows case-folding, removing an intent-to-add false positive and a casing-based evasion.
+
 ## [2.0.1] - 2026-07-14
 
 ### Added
