@@ -1,8 +1,50 @@
-# P9 · agy(Antigravity) 실호스트 라이브 발동 조사 — 발동 불가 실측 (2026-07-12)
+# P9 · agy(Antigravity) 실호스트 라이브 발동 조사
+
+> **⭐ 2026-07-15 재판정: agy 1.1.2에서 훅 발동 성공 — 아래 "발동 불가" 판정 뒤집힘(§재판정 참조).**
+> 근본원인은 agy 엔진이 아니라 **hooks.json의 `command`가 상대경로(`python ...`)였던 것**. 절대경로(`C:/Python312/python.exe ...`)로 바꾸자 PreToolUse/PostToolUse/Stop 전부 실발동. 이하 원문(1.1.1 미발동 실측)은 이력으로 보존.
+
+---
+
+## 재판정 (2026-07-15, agy 1.1.2)
+
+**결론: agy 1.1.2는 훅을 실제로 실행한다. 1.1.1 "엔진 미발동" 판정은 (a)1.1.2의 훅 로드/동기화 버그 수정 + (b)command 절대경로 요건 미충족의 복합이었다.**
+
+### 근본원인 (실측 확정)
+- **command 절대경로 필수**: `command: "python C:/.../probe.py ..."`(상대 `python`)는 미발동, `command: "C:/Python312/python.exe C:/.../probe.py ..."`(절대)는 즉시 발동. medium 가이드("The `command` parameter must use an absolute path. 스크립트는 exit 0 필수")와 일치. 상대 `python`은 훅 실행 컨텍스트에서 PATH 미해석 → exit 127 조용한 실패.
+- **1.1.1→1.1.2 훅 버그 수정 기여**: 웹 검색 CHANGELOG — "workspace-local `.agents/hooks.json` not loading after trusting folder 수정(workspace 변경 시 reload)" + "`/hooks`가 잘못된 디렉토리에 쓰던 버그 수정(TUI-백엔드 동기화)". 1.1.1의 UI "No hooks configured"가 1.1.2에선 훅 3종 정상 표시로 개선됨(로드 성공).
+
+### 실물 사양 (어댑터 개편 확정 자료)
+- **이벤트 6종**: `PreToolUse` / `PostToolUse` / `PreInvocation` / `PostInvocation` / `Stop`(+`SessionStart`). 실발동 확인=PreToolUse·PostToolUse·Stop.
+- **설정 경로(전부 유효)**: workspace `<root>/.agents/hooks.json`(국소) · 글로벌 `~/.gemini/config/hooks.json` · `~/.gemini/antigravity-cli/hooks.json`.
+- **스키마**: `{ "<그룹명>": { "<이벤트>": [ { "matcher": "<정규식 or 빈문자열>", "hooks": [ { "type": "command", "command": "<절대경로>", "timeout": N } ] } ] } }`. matcher는 tool 이름과 정규식 매칭(`""`·`"*"`=catch-all).
+- **payload(stdin JSON)**: `{conversationId, modelName, stepIdx, artifactDirectoryPath, transcriptPath, workspacePaths[], toolCall:{name, args}}`. PreToolUse엔 `toolCall` 존재, PostToolUse엔 `error` 필드(+toolCall null 스텝 다수). 어댑터의 (구)BeforeModel/BeforeTool/AfterTool/AfterAgent 스키마와 불일치.
+- **실물 도구명**(Claude Code와 다름 — 매핑 필요): `view_file`(읽기)·`write_to_file`(쓰기)·`run_command`(셸)·`manage_task`·`call_mcp_tool` 등.
+- **⚠️ fail-open 필수**: PreToolUse가 exit≠0이면 도구가 fail-closed 차단됨(웹 검색 cmux issue #4768 "PreToolUse hook fails closed... blocking all agy tool calls"). 어댑터는 어떤 경로에서도 exit 0 보장 필요.
+
+### 재판정 매트릭스 (2026-07-15)
+| # | command | 이벤트 | 결과 |
+|---|---------|--------|------|
+| R1 | 상대 `python ...` (자동승인 모드) | PreToolUse/PostToolUse | 미발동 (도구는 실행됨) |
+| R2 | 상대 `python ...` (quit) | Stop | 미발동 |
+| R3 | 상대 `python ...` (일반 모드) | PreToolUse/PostToolUse | 미발동 |
+| R4 | **절대 `C:/Python312/python.exe ...`** | PreToolUse/PostToolUse | **발동** (view_file·write_to_file·run_command 등 다수) |
+- probe.py 자체는 정상(수동 실행 시 파일 생성 확인) — R1~R3 미발동은 스크립트 결함 아닌 command PATH 문제.
+- 부수 관측: 글로벌 훅은 **모든 열린 agy 세션에 즉시 적용**(다른 워크스페이스 material-erp 세션의 도구 호출까지 발동 → 실사용 오염). 글로벌 훅은 격리 테스트에 부적합, workspace `.agents/`가 안전. 훅 파일 삭제 시 매 실행 재평가라 즉시 반영(발동 즉시 중단 실측).
+
+### 후속 (어댑터 개편 착수 가능)
+1. `adapters/antigravity/hooks.json` 이벤트명을 실물 6종으로 개편(BeforeModel→PreInvocation, BeforeTool→PreToolUse, AfterTool→PostToolUse, AfterAgent→Stop) + command 절대경로 + oma_hook.py payload 파서를 실물 스키마로.
+2. 실물 도구명 매핑(view_file/write_to_file/run_command → 코어의 read/edit/shell 판정).
+3. fail-open 하드 보장(PreToolUse exit 0).
+4. 라이브 E2E: workspace `.agents/hooks.json`로 격리 프로젝트에서 N1/Stop 실차단·회복 실관측.
+
+---
+
+## [이력] 발동 불가 실측 (2026-07-12, agy 1.1.1)
 
 > v1.2 Evidence Integrity P0-1의 "라이브 E2E" 수용기준을 실호스트에서 검증하는 과정에서,
-> OmA 어댑터가 현행 Antigravity CLI에서 **발동 자체가 불가능한 상태**임을 6회 실측으로 확정했다.
-> 이 문서가 그 증거 기록이다. (조사 방법: 격리 프로젝트 `tmp/agy-live` + 실패→수정→통과 시나리오 반복)
+> OmA 어댑터가 당시 Antigravity CLI 1.1.1에서 **발동 자체가 불가능한 상태**로 6회 실측했다.
+> (조사 방법: 격리 프로젝트 `tmp/agy-live` + 실패→수정→통과 시나리오 반복)
+> ⚠️ 2026-07-15 재판정으로 원인이 **command 상대경로 + 1.1.1 훅 로드 버그**로 규명됨 — "엔진 미발동" 결론은 폐기.
 
 ## 결론 (요약)
 
