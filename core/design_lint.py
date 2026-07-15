@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
-from difflib import SequenceMatcher
 import hashlib
 from pathlib import Path
 import re
@@ -18,23 +16,32 @@ JsonValue: TypeAlias = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
 RAW_COLOR: Final = "design/raw-color"
 RAW_SPACING: Final = "design/raw-spacing"
 TAILWIND_ARBITRARY: Final = "design/tailwind-arbitrary"
-HEX_RE: Final = re.compile(r"#[0-9A-Fa-f]{3,8}\b")
-TAILWIND_RE: Final = re.compile(r"\[(?:#[0-9A-Fa-f]{3,8}|\d+(?:\.\d+)?px)\]")
-CHART_DATA_COLOR_RE: Final = re.compile(
-    r"\b(?:chartData|chart_data|datasets?|series)\b[^\[]*\[[^\]]*\b(?:color|backgroundColor)\s*:\s*[\"']#[0-9A-Fa-f]{3,8}\b",
-    re.IGNORECASE | re.DOTALL,
+COLOR_LITERAL_PATTERN: Final = (
+    r"(?:#[0-9A-Fa-f]{3,8}\b|(?:rgba?|hsla?)\([^)]*\))"
+)
+COLOR_LITERAL_RE: Final = re.compile(COLOR_LITERAL_PATTERN, re.IGNORECASE)
+TAILWIND_RE: Final = re.compile(r"\[(?:#[0-9A-Fa-f]{3,8}|-?\d+(?:\.\d+)?px)\]")
+CHART_DATA_START_RE: Final = re.compile(
+    r"\b(?:chartData|chart_data|datasets?|series)\b\s*(?:=|:)\s*(?P<open>[\[{])",
+    re.IGNORECASE,
+)
+CHART_COLOR_RE: Final = re.compile(
+    rf"\b(?:color|backgroundColor)\s*:\s*[\"']?{COLOR_LITERAL_PATTERN}",
+    re.IGNORECASE,
 )
 COLOR_PROPERTY_RE: Final = re.compile(
-    r"(?:^|[;{\s])(?:color|background(?:-color)?|border(?:-[\w-]+)?-color|outline-color|fill|stroke)\s*:\s*[^;}]*#[0-9A-Fa-f]{3,8}\b",
+    rf"(?:^|[;{{\s])(?:color|background(?:-color)?|border(?:-[\w-]+)?-color|outline-color|fill|stroke|box-shadow|text-shadow|--[\w-]+)\s*:\s*[^;}}]*?{COLOR_LITERAL_PATTERN}",
     re.IGNORECASE,
 )
 SPACING_PROPERTY_RE: Final = re.compile(
-    r"(?:^|[;{\s])(?:margin(?:-[\w-]+)?|padding(?:-[\w-]+)?|gap|row-gap|column-gap|inset(?:-[\w-]+)?|top|right|bottom|left)\s*:\s*[^;}]*?(\d+(?:\.\d+)?)px\b",
+    r"(?:^|[;{\s])(?:margin(?:-[\w-]+)?|padding(?:-[\w-]+)?|gap|row-gap|column-gap|inset(?:-[\w-]+)?|top|right|bottom|left)\s*:\s*(?P<value>[^;}]+)",
     re.IGNORECASE,
 )
 JS_SPACING_RE: Final = re.compile(
-    r"(?:margin\w*|padding\w*|gap|rowGap|columnGap|inset|top|right|bottom|left)\s*:\s*[\"']?(\d+(?:\.\d+)?)(?:px)?[\"']?",
+    r"(?:margin\w*|padding\w*|gap|rowGap|columnGap|inset|top|right|bottom|left)\s*:\s*(?P<value>[\"'][^\"']*[\"']|-?\d+(?:\.\d+)?(?:px)?)",
 )
+PX_LITERAL_RE: Final = re.compile(r"(?P<number>-?\d+(?:\.\d+)?)px\b", re.IGNORECASE)
+NUMBER_LITERAL_RE: Final = re.compile(r"^-?\d+(?:\.\d+)?$")
 SCRIPT_EXTENSIONS: Final = frozenset({".js", ".jsx", ".ts", ".tsx", ".vue", ".svelte"})
 
 
@@ -142,17 +149,36 @@ def _rules_for_line(line: str, suffix: str, context: str) -> tuple[str, ...]:
 
 def _has_raw_color(line: str, suffix: str, context: str) -> bool:
     if suffix in SCRIPT_EXTENSIONS:
-        return HEX_RE.search(line) is not None and not _chart_data_color(context)
+        return COLOR_LITERAL_RE.search(line) is not None and not _chart_data_color(context)
     return COLOR_PROPERTY_RE.search(line) is not None
 
 
 def _chart_data_color(context: str) -> bool:
-    return CHART_DATA_COLOR_RE.search(context) is not None
+    current_line_start = context.rfind("\n") + 1
+    if CHART_COLOR_RE.search(context[current_line_start:]) is None:
+        return False
+    starts = tuple(CHART_DATA_START_RE.finditer(context))
+    if not starts:
+        return False
+    start = starts[-1]
+    if start.start() >= current_line_start:
+        return True
+    opener = start.group("open")
+    closer = "]" if opener == "[" else "}"
+    preceding = context[start.end() - 1 : current_line_start]
+    return preceding.count(opener) > preceding.count(closer)
 
 
 def _has_raw_spacing(line: str, suffix: str) -> bool:
     pattern = JS_SPACING_RE if suffix in SCRIPT_EXTENSIONS else SPACING_PROPERTY_RE
-    return any(float(match.group(1)) > 0 for match in pattern.finditer(line))
+    for match in pattern.finditer(line):
+        value = match.group("value").strip().strip("\"'")
+        numbers = [float(item.group("number")) for item in PX_LITERAL_RE.finditer(value)]
+        if suffix in SCRIPT_EXTENSIONS and not numbers and NUMBER_LITERAL_RE.fullmatch(value):
+            numbers.append(float(value))
+        if any(abs(number) > 1 for number in numbers):
+            return True
+    return False
 
 
 def _allowed(
@@ -201,43 +227,11 @@ def _changed_from_hashes(path: Path, baseline_hashes: tuple[str, ...]) -> set[in
         hashlib.blake2b(line.encode("utf-8"), digest_size=16).hexdigest()
         for line in path.read_text(encoding="utf-8").splitlines()
     )
-    changed: set[int] = set()
-    opcodes = SequenceMatcher(
-        None,
-        baseline_hashes,
-        current_hashes,
-        autojunk=False,
-    ).get_opcodes()
-    for tag, _, _, current_start, current_end in opcodes:
-        if tag in {"replace", "insert"}:
-            changed.update(range(current_start + 1, current_end + 1))
-    changed.update(_moved_line_span(opcodes, baseline_hashes, current_hashes))
-    return changed
-
-
-def _moved_line_span(
-    opcodes: Sequence[tuple[str, int, int, int, int]],
-    baseline_hashes: tuple[str, ...],
-    current_hashes: tuple[str, ...],
-) -> set[int]:
-    deleted = {
-        digest: index + 1
-        for tag, start, end, _, _ in opcodes
-        if tag in {"delete", "replace"}
-        for index, digest in enumerate(baseline_hashes[start:end], start=start)
+    return {
+        index + 1
+        for index, digest in enumerate(current_hashes)
+        if index >= len(baseline_hashes) or digest != baseline_hashes[index]
     }
-    inserted = {
-        digest: index + 1
-        for tag, _, _, start, end in opcodes
-        if tag in {"insert", "replace"}
-        for index, digest in enumerate(current_hashes[start:end], start=start)
-    }
-    moved: set[int] = set()
-    for digest in deleted.keys() & inserted.keys():
-        start = min(deleted[digest], inserted[digest])
-        end = max(deleted[digest], inserted[digest])
-        moved.update(range(start, end + 1))
-    return moved
 
 
 def _tracked_at(root: Path, path: str, revision: str) -> bool:

@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Final
 
-from .design_gate import is_ui_path
+from .design_gate import DESIGN_CONFIG_PATH, is_ui_path
 from .ledger_schema import JsonObject, JsonValue
 
 DOC_EXTS: Final = (".md", ".txt", ".rst", ".adoc")
@@ -130,7 +130,9 @@ def apply_v1_event(ledger: JsonObject, payload: Mapping[str, JsonValue]) -> Json
             ledger["change_kinds"] = _append_unique(kinds, kind)
             if kind != "docs":
                 ledger["last_change_seq"] = event_seq
-            if ledger.get("design_required") is True and is_ui_path(path):
+            normalized = Path(path.replace("\\", "/")).as_posix().removeprefix("./").casefold()
+            policy_changed = normalized == DESIGN_CONFIG_PATH.as_posix().casefold()
+            if ledger.get("design_required") is True and (is_ui_path(path) or policy_changed):
                 ledger["design_touched"] = True
                 ledger["design_last_change_seq"] = event_seq
                 ledger["design_check_passed"] = False

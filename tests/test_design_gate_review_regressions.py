@@ -111,7 +111,7 @@ def test_design_result_store_rejects_a_change_after_lint_scope_capture(
 
 @pytest.mark.parametrize(
     "prompt",
-    ["UI/UX 개선해줘", "Improve UI."],
+    ["UI/UX 개선해줘", "Improve UI.", "UI를 개선해줘", "UX를 개선해줘"],
 )
 def test_ui_keyword_boundaries_survive_slashes_and_punctuation(
     tmp_path: Path,
@@ -130,18 +130,63 @@ def test_ui_keyword_boundaries_survive_slashes_and_punctuation(
 
 
 def test_enabled_turn_cannot_disable_its_own_design_stop_gate(tmp_path: Path) -> None:
-    # Given: project config enabled a UI turn that already touched UI.
+    # Given: project config enabled a UI turn with a fresh passing design check.
     config = tmp_path / "design" / "gate.config"
     config.parent.mkdir(parents=True)
     config.write_text('{"enabled": true}\n', encoding="utf-8", newline="\n")
     _start_ui_turn(tmp_path)
     _verify(tmp_path)
+    code, payload = _run_design(tmp_path)
+    assert code == 0 and payload["passed"] is True
 
-    # When: the same turn changes config to disabled before Stop.
+    # When: the same turn records a policy change to disabled before Stop.
     config.write_text('{"enabled": false}\n', encoding="utf-8", newline="\n")
+    _record(tmp_path, {"event": "change", "path": "design/gate.config", "kind": "code"})
+    _verify(tmp_path)
     decision = evaluate_stop({"project_root": str(tmp_path)})
 
-    # Then: prompt-time opt-in remains authoritative for that active turn.
+    # Then: prompt-time opt-in remains authoritative and the old PASS is stale.
+    assert decision["decision"] == "block"
+    assert decision["reason_code"] == "stop_design_lint_missing"
+
+
+def test_allowlist_change_invalidates_previously_passing_design_result(tmp_path: Path) -> None:
+    # Given: a temporary allowlist made the current raw color pass design lint.
+    config = tmp_path / "design" / "gate.config"
+    config.parent.mkdir(parents=True)
+    config.write_text(
+        json.dumps(
+            {
+                "enabled": True,
+                "allowlist": [
+                    {
+                        "path": "src/App.tsx",
+                        "rule_id": "design/raw-color",
+                        "reason": "temporary migration",
+                        "expires": "2099-12-31",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    _start_ui_turn(tmp_path)
+    target = tmp_path / "src" / "App.tsx"
+    target.parent.mkdir(parents=True)
+    target.write_text('export const ink = "#123456";\n', encoding="utf-8", newline="\n")
+    _record(tmp_path, {"event": "change", "path": "src/App.tsx", "kind": "code"})
+    _verify(tmp_path)
+    code, payload = _run_design(tmp_path)
+    assert code == 0 and payload["passed"] is True
+
+    # When: the turn removes that allowlist and records the policy change.
+    config.write_text('{"enabled": true}\n', encoding="utf-8", newline="\n")
+    _record(tmp_path, {"event": "change", "path": "design/gate.config", "kind": "code"})
+    _verify(tmp_path)
+    decision = evaluate_stop({"project_root": str(tmp_path)})
+
+    # Then: the old PASS is stale even though the UI file itself did not change again.
     assert decision["decision"] == "block"
     assert decision["reason_code"] == "stop_design_lint_missing"
 

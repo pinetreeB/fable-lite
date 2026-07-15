@@ -19,7 +19,7 @@ DESIGN_CONFIG_PATH: Final = Path("design/gate.config")
 UI_EXTENSIONS: Final = frozenset(
     {".css", ".scss", ".sass", ".less", ".html", ".htm", ".js", ".jsx", ".ts", ".tsx", ".vue", ".svelte", ".svg"}
 )
-UI_WORD_RE: Final = re.compile(r"(?<!\w)(?:ui|ux)(?!\w)", re.IGNORECASE)
+UI_WORD_RE: Final = re.compile(r"(?<![A-Za-z0-9_])(?:ui|ux)(?![A-Za-z0-9_])", re.IGNORECASE)
 UI_TERMS: Final = (
     "디자인",
     "화면",

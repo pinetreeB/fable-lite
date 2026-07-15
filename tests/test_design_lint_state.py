@@ -199,3 +199,46 @@ def test_design_lint_blocks_a_preexisting_dirty_violation_moved_during_turn(
     assert [(item["line"], item["rule_id"]) for item in _violations(payload)] == [
         (2, "design/raw-color")
     ]
+
+
+def test_design_lint_keeps_same_line_legacy_debt_exempt_during_clean_reorder(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: legacy raw-color debt is dirty at line two before the UI turn.
+    _init_repo(tmp_path)
+    _write(
+        tmp_path,
+        "src/App.css",
+        ".clean-a { color: var(--a); }\n.legacy { color: #123456; }\n.clean-b { color: var(--b); }\n",
+    )
+    monkeypatch.setenv("FABLE_LITE_DESIGN_GATE", "1")
+    _ = record_event(
+        {
+            "project_root": str(tmp_path),
+            "event": "prompt",
+            "task_mode": "normal",
+            "prompt": "src/App.css UI 화면을 수정해줘",
+        }
+    )
+
+    # When: only the clean surrounding lines trade places.
+    _write(
+        tmp_path,
+        "src/App.css",
+        ".clean-b { color: var(--b); }\n.legacy { color: #123456; }\n.clean-a { color: var(--a); }\n",
+    )
+    _ = record_event(
+        {
+            "project_root": str(tmp_path),
+            "event": "change",
+            "path": "src/App.css",
+            "kind": "code",
+        }
+    )
+    process, payload = _run_design(tmp_path)
+
+    # Then: unchanged same-line legacy debt remains outside current-turn scope.
+    assert process.returncode == 0
+    assert payload["passed"] is True
+    assert _violations(payload) == []

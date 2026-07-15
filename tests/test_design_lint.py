@@ -102,6 +102,55 @@ def test_design_lint_detects_changed_hardcodes_across_supported_surfaces(
     assert all(isinstance(item["line"], int) and item["line"] > 0 for item in violations)
 
 
+def test_design_lint_detects_composite_spacing_color_and_tailwind_literals(
+    tmp_path: Path,
+) -> None:
+    # Given: changed UI files use the composite literals missed by the original regexes.
+    _init_repo(tmp_path)
+    _write(tmp_path, "src/spacing.tsx", 'const style = { margin: "0 16px" };\n')
+    _write(
+        tmp_path,
+        "src/colors.css",
+        ".shadow { box-shadow: 0 0 4px rgba(1, 2, 3, 0.4); }\n:root { --color: #123456; }\n",
+    )
+    _write(
+        tmp_path,
+        "src/colors.tsx",
+        'const style = { color: "rgba(1, 2, 3, 0.4)", backgroundColor: "hsl(20 30% 40%)" };\n',
+    )
+    _write(tmp_path, "src/negative.html", '<div class="m-[-13px]">panel</div>\n')
+
+    # When: the one-shot design lint evaluates the changed corpus.
+    process, payload = _run_design(tmp_path)
+
+    # Then: every missed syntax is reported through its stable rule identifier.
+    assert process.returncode == 1
+    assert {
+        (item["file"], item["rule_id"])
+        for item in _violations(payload)
+    } == {
+        ("src/colors.css", "design/raw-color"),
+        ("src/colors.tsx", "design/raw-color"),
+        ("src/negative.html", "design/tailwind-arbitrary"),
+        ("src/spacing.tsx", "design/raw-spacing"),
+    }
+
+
+def test_design_lint_allows_conservative_one_pixel_spacing_boundary(tmp_path: Path) -> None:
+    # Given: changed CSS and script spacing uses only zero or one-pixel literals.
+    _init_repo(tmp_path)
+    _write(tmp_path, "src/hairline.css", ".hairline { margin: 1px; padding: 0 1px; gap: 1px; }\n")
+    _write(tmp_path, "src/hairline.tsx", 'const style = { margin: "0 1px", gap: 1 };\n')
+
+    # When: design lint evaluates the conservative DESIGN-OPS hairline boundary.
+    process, payload = _run_design(tmp_path)
+
+    # Then: zero and one remain allowed without weakening larger-literal detection.
+    assert process.returncode == 0
+    assert payload["passed"] is True
+    assert _violations(payload) == []
+
+
 def test_design_lint_checks_only_lines_changed_from_existing_project(
     tmp_path: Path,
 ) -> None:
@@ -166,6 +215,25 @@ def test_design_lint_does_not_treat_chart_named_styles_as_chart_data(tmp_path: P
     assert process.returncode == 1
     assert [(item["file"], item["rule_id"]) for item in _violations(payload)] == [
         ("src/chart.tsx", "design/raw-color")
+    ]
+
+
+def test_design_lint_closes_chart_exception_before_later_ui_styles(tmp_path: Path) -> None:
+    # Given: valid chart data is followed by a separate raw-color UI style.
+    _init_repo(tmp_path)
+    _write(
+        tmp_path,
+        "src/chart.tsx",
+        'const chartData = [\n  { color: "#123456" },\n];\nconst buttonStyle = { color: "#abcdef" };\n',
+    )
+
+    # When: design lint evaluates the changed script.
+    process, payload = _run_design(tmp_path)
+
+    # Then: closing the data array also closes its color exception.
+    assert process.returncode == 1
+    assert [(item["line"], item["rule_id"]) for item in _violations(payload)] == [
+        (4, "design/raw-color")
     ]
 
 
