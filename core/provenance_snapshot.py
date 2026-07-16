@@ -15,6 +15,7 @@ from .provenance_types import (
     ScanIssue,
     ScanResult,
     Snapshot,
+    SnapshotExclusion,
 )
 
 SCANNER_SCHEMA_VERSION = 2
@@ -55,7 +56,7 @@ def build_snapshot(context: SnapshotBuildContext, result: ScanResult) -> Snapsho
         entries=entries,
         reparse_observations=observations,
         issues=issues,
-        snapshot_id=_snapshot_id(entries),
+        snapshot_id=snapshot_id_for(entries),
         scope_policy_id=_scope_policy_id(context),
         generated_patterns=context.config.generated,
         is_casefolded=context.windows,
@@ -78,14 +79,33 @@ def _colliding_keys(entries: tuple[ManifestEntry, ...], windows: bool) -> dict[s
     return collisions
 
 
-def _snapshot_id(entries: tuple[ManifestEntry, ...]) -> str:
+def snapshot_id_for(
+    entries: tuple[ManifestEntry, ...],
+    exclusions: tuple[SnapshotExclusion, ...] = (),
+) -> str:
     encoded = json.dumps(
-        [
-            (entry.path, entry.file_type.value, entry.size, entry.mtime_ns, entry.mode, entry.digest)
-            for entry in entries
-        ],
+        {
+            "entries": [
+                (entry.path, entry.file_type.value, entry.size, entry.mtime_ns, entry.mode, entry.digest)
+                for entry in entries
+            ],
+            "exclusions": [
+                (
+                    item.path,
+                    item.reason,
+                    item.peer_agent_key,
+                    item.peer_turn_id,
+                    item.invocation_id,
+                    item.started_seq,
+                    item.started_at,
+                    item.observer_turn_id,
+                )
+                for item in exclusions
+            ],
+        },
         ensure_ascii=False,
         separators=(",", ":"),
+        sort_keys=True,
     )
     return _digest_text(encoded)
 

@@ -27,6 +27,7 @@ CHANGE_OPERATIONS: Final = frozenset(
     {"create", "modify", "delete", "type_change", "mode_change"}
 )
 CHANGE_KINDS: Final = frozenset({"code", "docs", "artifact"})
+COMMIT_STATES: Final = frozenset({"uncommitted", "committed"})
 TRANSITION_REQUIREMENTS: Final = {
     "create": (False, True),
     "modify": (True, True),
@@ -59,6 +60,16 @@ def _path_revision(value: JsonValue, field: str) -> tuple[str, str]:
 
 def _change_event(value: JsonObject) -> None:
     _ = _common_event(value)
+    _ = _positive_integer(
+        _required(value, "manifest_generation", "event"),
+        "event.manifest_generation",
+    )
+    commit_state = _string(
+        _required(value, "commit_state", "event"),
+        "event.commit_state",
+    )
+    if commit_state not in COMMIT_STATES:
+        _reject("event.commit_state", "must be uncommitted or committed")
     source = _string(_required(value, "source", "event"), "event.source")
     if source not in CHANGE_SOURCES:
         _reject("event.source", "must be a recognized source")

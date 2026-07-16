@@ -320,7 +320,7 @@ def test_incomplete_adapter_start_never_exposes_phantom_snapshot_ids(
     error = SnapshotStoreError(workspace_current_path(tmp_path), "injected")
 
     with patch(
-        "core.provenance_lifecycle.save_turn_baseline_from_current",
+        "core.provenance_manifest.save_turn_baseline_from_current",
         side_effect=error,
     ):
         report = start_turn(tmp_path, invocation)

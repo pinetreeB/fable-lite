@@ -15,6 +15,7 @@ from core.provenance_lifecycle import ProvenanceLifecycle
 
 from .provenance_bench_metrics import MIB, PhaseMeasurement, PhaseStats, SloResult, evaluate_slo, measure, measure_memory, summarize_phase
 from .provenance_bench_models import BenchResult, FileSpec, ScaleResult, ScenarioResult, StressResult
+from .provenance_bench_attribution import run_attribution_benchmark
 from .provenance_bench_receipt import write_receipt
 from .provenance_bench_scorecard import run_scorecard_benchmark
 
@@ -53,6 +54,7 @@ def run_benchmark(stress: bool, seed: int) -> BenchResult:
     with tempfile.TemporaryDirectory(prefix="fable-provenance-bench-", dir=BENCH_TMP_DIR) as raw:
         root = Path(raw)
         scorecard = run_scorecard_benchmark(root / "scorecard")
+        attribution = run_attribution_benchmark(root / "attribution")
         small = _run_scale(root / "1k", 1_000, 5, 30, seed, False)
         standard = _run_scale(root / "10k", 10_000, 5, 30, seed, True)
         scale_slos = {
@@ -66,7 +68,14 @@ def run_benchmark(stress: bool, seed: int) -> BenchResult:
         failures = tuple(f"{count}:{failure}" for count, result in scale_slos.items() for failure in result.failures)
         slo = SloResult(all(result.passed for result in scale_slos.values()), failures)
         stress_result = _run_stress(root / "50k", seed) if stress else StressResult(False, False, "not_requested", True)
-    return BenchResult((small, standard), slo, scale_slos, stress_result, scorecard)
+    return BenchResult(
+        (small, standard),
+        slo,
+        scale_slos,
+        stress_result,
+        scorecard,
+        attribution,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -79,9 +88,12 @@ def main(argv: list[str] | None = None) -> int:
     write_receipt(options.output, result, options.seed)
     scorecard_passed = result.scorecard is not None and result.scorecard.hard_gate.passed
     passed = result.slo.passed and scorecard_passed
+    attribution_passed = result.attribution is not None and result.attribution.passed
+    attribution_status = "PASS" if attribution_passed else "FAIL"
     print(
         f"provenance bench slo={'PASS' if result.slo.passed else 'FAIL'} "
-        f"scorecard={'PASS' if scorecard_passed else 'FAIL'} stress={result.stress.reason}"
+        f"scorecard={'PASS' if scorecard_passed else 'FAIL'} "
+        f"attribution={attribution_status}(measure-only) stress={result.stress.reason}"
     )
     return 0 if passed else 1
 

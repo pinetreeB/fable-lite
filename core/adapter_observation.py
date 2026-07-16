@@ -1,8 +1,10 @@
+"""# noqa: SIZE_OK — W3 must extend this existing adapter-core boundary without new production modules."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Final
+from typing import Final, cast
 
 from .adapter_change_events import record_observed_changes
 from .ledger import JsonObject, capture_verification_covers, load_ledger, record_event
@@ -94,7 +96,15 @@ def start_turn(root: Path, invocation: CanonicalInvocation) -> ObservationReport
     try:
         lifecycle = ProvenanceLifecycle(root)
         with scan_progress(lifecycle.observed_file_count):
-            result = lifecycle.start_turn(invocation.agent_key, invocation.turn_id)
+            result = lifecycle.start_turn(
+                invocation.agent_key,
+                invocation.turn_id,
+                event_agent=invocation.agent,
+                host=invocation.host,
+                session_id=invocation.session_id,
+                invocation_id=invocation.invocation_id,
+                observed_at=invocation.phase,
+            )
     except (KeyError, OSError, SnapshotStoreError) as exc:
         return _incomplete_report(error_kind=type(exc).__name__)
     return _report(result, result.snapshot.snapshot_id if result.snapshot is not None else "")
@@ -122,6 +132,10 @@ def begin_invocation(root: Path, invocation: CanonicalInvocation) -> Observation
                 invocation.turn_id,
                 invocation.invocation_id,
                 invocation.candidate_paths,
+                event_agent=invocation.agent,
+                host=invocation.host,
+                session_id=invocation.session_id,
+                observed_at=invocation.phase,
             )
         covers = _covers(root, invocation)
     except TurnBootstrapError as exc:
@@ -140,7 +154,7 @@ def begin_invocation(root: Path, invocation: CanonicalInvocation) -> Observation
         report = _incomplete_report(error_kind=type(exc).__name__)
         _record_status(root, invocation, report)
         return report
-    _record_invocation(root, invocation, covers)
+    _record_invocation(root, invocation, covers, started.snapshot_id)
     return ObservationReport(started.snapshot_id, "", (), False, False)
 
 
@@ -161,6 +175,10 @@ def observe_post_tool(root: Path, invocation: CanonicalInvocation) -> Observatio
             invocation.invocation_id,
             _stored_candidates(root, invocation),
             False,
+            event_agent=invocation.agent,
+            host=invocation.host,
+            session_id=invocation.session_id,
+            observed_at=invocation.phase,
         )
         with scan_progress(lifecycle.observed_file_count):
             result = lifecycle.post_tool(started, _source(invocation))
@@ -178,13 +196,22 @@ def finish_turn(root: Path, invocation: CanonicalInvocation) -> ObservationRepor
     if report := _home_root_unsupported_report(root):
         return report
     invocation = _active_invocation(root, invocation)
+    _record_finish_requested(root, invocation)
     if report := _scope_too_large_report(root, invocation):
         return report
     try:
         lifecycle = ProvenanceLifecycle(root)
         lifecycle.resume_turn(invocation.agent_key, invocation.turn_id, _mutation_capable(invocation))
         with scan_progress(lifecycle.observed_file_count):
-            result = lifecycle.finish_turn(invocation.agent_key, invocation.turn_id)
+            result = lifecycle.reconcile_turn(
+                invocation.agent_key,
+                invocation.turn_id,
+                event_agent=invocation.agent,
+                host=invocation.host,
+                session_id=invocation.session_id,
+                invocation_id=invocation.invocation_id,
+                observed_at=invocation.phase,
+            )
     except MissingTurnBaselineError:
         ledger = load_ledger({"project_root": str(root)})
         turns = ledger.get("active_turns")
@@ -224,6 +251,11 @@ def reconcile_turn(root: Path, invocation: CanonicalInvocation) -> ObservationRe
             result = lifecycle.reconcile_turn(
                 invocation.agent_key,
                 invocation.turn_id,
+                event_agent=invocation.agent,
+                host=invocation.host,
+                session_id=invocation.session_id,
+                invocation_id=invocation.invocation_id,
+                observed_at=invocation.phase,
             )
     except (KeyError, OSError, SnapshotStoreError) as exc:
         report = _incomplete_report(True, error_kind=type(exc).__name__)
@@ -291,7 +323,7 @@ def _report(result: ObservationResult, baseline_snapshot_id: str) -> Observation
     )
 
 
-def _snapshot_budget_fields(snapshot: object) -> tuple[tuple[JsonObject, ...], str | None]:
+def _snapshot_budget_fields(snapshot: Snapshot | None) -> tuple[tuple[JsonObject, ...], str | None]:
     top_paths = getattr(snapshot, "budget_top_paths", None)
     breach_path = getattr(snapshot, "budget_breach_path", None)
     if not top_paths:
@@ -353,9 +385,15 @@ def _covers(root: Path, invocation: CanonicalInvocation) -> JsonObject | None:
 
 
 def _record_invocation(
-    root: Path, invocation: CanonicalInvocation, covers: JsonObject | None
+    root: Path,
+    invocation: CanonicalInvocation,
+    covers: JsonObject | None,
+    baseline_snapshot_id: str = "",
 ) -> None:
-    payload = _ledger_payload(root, invocation) | {"event": "invocation"}
+    payload = _ledger_payload(root, invocation) | {
+        "event": "invocation",
+        "candidate_paths": list(invocation.candidate_paths),
+    }
     classification = _shell_classification(invocation)
     if _mutation_capable(invocation, classification):
         payload["provenance_mutation_capable"] = True
@@ -365,7 +403,21 @@ def _record_invocation(
         payload["remote_target_ids"] = list(target_ids)
     if covers is not None:
         payload["covers"] = covers
+    if baseline_snapshot_id:
+        payload["baseline_status"] = "ready"
+        payload["baseline_snapshot_id"] = baseline_snapshot_id
     _ = record_event(payload)
+
+
+def _record_finish_requested(root: Path, invocation: CanonicalInvocation) -> None:
+    if load_ledger({"project_root": str(root)}).get("schema_version") != 2:
+        return
+    _ = record_event(
+        _ledger_payload(root, invocation)
+        | {
+            "event": "finish_requested",
+        }
+    )
 
 
 def _record_changes(
@@ -534,7 +586,10 @@ def _scope_too_large_report(
     if turn is None or turn.get("provenance_status") != ProvenanceStatus.SCOPE_TOO_LARGE.value:
         return None
     reason = turn.get("provenance_status_reason")
-    top_paths = normalize_budget_top_paths(turn.get("provenance_budget_top_paths"))
+    top_paths = cast(
+        tuple[JsonObject, ...],
+        normalize_budget_top_paths(turn.get("provenance_budget_top_paths")),
+    )
     breach_path = normalize_budget_breach_path(turn.get("provenance_budget_breach_path"))
     return ObservationReport(
         "",

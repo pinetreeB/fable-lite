@@ -3,6 +3,8 @@
   "event": "change",
   "event_id": "change-17",
   "seq": 17,
+  "manifest_generation": 1,
+  "commit_state": "committed",
   "turn_id": "turn-001",
   "agent": "codex",
   "source": "shell",

@@ -1,0 +1,167 @@
+{
+  "budget_ms": 6000,
+  "failures": [],
+  "measure_only": true,
+  "platform": "nt",
+  "scenarios": [
+    {
+      "atomic_write_count": 30,
+      "decision_counts": {
+        "block": 30
+      },
+      "ledger_valid": true,
+      "measurements": 30,
+      "path_attribution": 0,
+      "peer_exemption": false,
+      "stop": {
+        "content_read_bytes": 0,
+        "full_scan_count": 0,
+        "hash_calls": 0,
+        "incomplete_count": 0,
+        "journal_read_count": 0,
+        "max_ns": 11280300,
+        "p50_ns": 7633800,
+        "p95_ns": 10530300,
+        "p99_ns": 11280300,
+        "rss_peak_bytes": 0,
+        "sample_count": 30,
+        "stat_count": 0,
+        "tracemalloc_peak_bytes": 0
+      },
+      "warmups": 5
+    },
+    {
+      "atomic_write_count": 30,
+      "decision_counts": {
+        "allow": 30
+      },
+      "ledger_valid": true,
+      "measurements": 30,
+      "path_attribution": 0,
+      "peer_exemption": true,
+      "stop": {
+        "content_read_bytes": 0,
+        "full_scan_count": 0,
+        "hash_calls": 0,
+        "incomplete_count": 0,
+        "journal_read_count": 0,
+        "max_ns": 18385900,
+        "p50_ns": 9812900,
+        "p95_ns": 15160100,
+        "p99_ns": 18385900,
+        "rss_peak_bytes": 0,
+        "sample_count": 30,
+        "stat_count": 0,
+        "tracemalloc_peak_bytes": 0
+      },
+      "warmups": 5
+    },
+    {
+      "atomic_write_count": 30,
+      "decision_counts": {
+        "block": 30
+      },
+      "ledger_valid": true,
+      "measurements": 30,
+      "path_attribution": 1000,
+      "peer_exemption": false,
+      "stop": {
+        "content_read_bytes": 0,
+        "full_scan_count": 0,
+        "hash_calls": 0,
+        "incomplete_count": 0,
+        "journal_read_count": 0,
+        "max_ns": 40171900,
+        "p50_ns": 30172000,
+        "p95_ns": 39636600,
+        "p99_ns": 40171900,
+        "rss_peak_bytes": 0,
+        "sample_count": 30,
+        "stat_count": 0,
+        "tracemalloc_peak_bytes": 0
+      },
+      "warmups": 5
+    },
+    {
+      "atomic_write_count": 30,
+      "decision_counts": {
+        "allow": 30
+      },
+      "ledger_valid": true,
+      "measurements": 30,
+      "path_attribution": 1000,
+      "peer_exemption": true,
+      "stop": {
+        "content_read_bytes": 0,
+        "full_scan_count": 0,
+        "hash_calls": 0,
+        "incomplete_count": 0,
+        "journal_read_count": 0,
+        "max_ns": 43635200,
+        "p50_ns": 29272800,
+        "p95_ns": 43405100,
+        "p99_ns": 43635200,
+        "rss_peak_bytes": 0,
+        "sample_count": 30,
+        "stat_count": 0,
+        "tracemalloc_peak_bytes": 0
+      },
+      "warmups": 5
+    },
+    {
+      "atomic_write_count": 30,
+      "decision_counts": {
+        "block": 30
+      },
+      "ledger_valid": true,
+      "measurements": 30,
+      "path_attribution": 10000,
+      "peer_exemption": false,
+      "stop": {
+        "content_read_bytes": 0,
+        "full_scan_count": 0,
+        "hash_calls": 0,
+        "incomplete_count": 0,
+        "journal_read_count": 0,
+        "max_ns": 194679200,
+        "p50_ns": 169100700,
+        "p95_ns": 181622500,
+        "p99_ns": 194679200,
+        "rss_peak_bytes": 0,
+        "sample_count": 30,
+        "stat_count": 0,
+        "tracemalloc_peak_bytes": 0
+      },
+      "warmups": 5
+    },
+    {
+      "atomic_write_count": 30,
+      "decision_counts": {
+        "allow": 30
+      },
+      "ledger_valid": true,
+      "measurements": 30,
+      "path_attribution": 10000,
+      "peer_exemption": true,
+      "stop": {
+        "content_read_bytes": 0,
+        "full_scan_count": 0,
+        "hash_calls": 0,
+        "incomplete_count": 0,
+        "journal_read_count": 0,
+        "max_ns": 203078700,
+        "p50_ns": 168182600,
+        "p95_ns": 186265000,
+        "p99_ns": 203078700,
+        "rss_peak_bytes": 0,
+        "sample_count": 30,
+        "stat_count": 0,
+        "tracemalloc_peak_bytes": 0
+      },
+      "warmups": 5
+    }
+  ],
+  "schema_version": 1,
+  "suite": "multiagent-attribution-stop",
+  "verdict": "PASS"
+}

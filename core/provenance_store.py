@@ -1,3 +1,5 @@
+"""# noqa: SIZE_OK — snapshot exclusion persistence belongs to this card-approved store module."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -16,6 +18,7 @@ from .provenance_types import (
     ProvenanceStatus,
     ScanIssue,
     Snapshot,
+    SnapshotExclusion,
 )
 
 JsonScalar: TypeAlias = str | int | bool | None
@@ -129,6 +132,7 @@ def _to_value(snapshot: Snapshot) -> dict[str, JsonValue]:
         "entries": [_entry_value(entry) for entry in snapshot.entries],
         "reparse_observations": [_entry_value(entry) for entry in snapshot.reparse_observations],
         "issues": [{"path": issue.path, "reason": issue.reason} for issue in snapshot.issues],
+        "exclusions": [_exclusion_value(item) for item in snapshot.exclusions],
         "snapshot_id": snapshot.snapshot_id,
         "scope_policy_id": snapshot.scope_policy_id,
         "generated_patterns": list(snapshot.generated_patterns),
@@ -152,12 +156,26 @@ def _entry_value(entry: ManifestEntry) -> dict[str, JsonValue]:
     }
 
 
+def _exclusion_value(item: SnapshotExclusion) -> dict[str, JsonValue]:
+    return {
+        "path": item.path,
+        "reason": item.reason,
+        "peer_agent_key": item.peer_agent_key,
+        "peer_turn_id": item.peer_turn_id,
+        "invocation_id": item.invocation_id,
+        "started_seq": item.started_seq,
+        "started_at": item.started_at,
+        "observer_turn_id": item.observer_turn_id,
+    }
+
+
 def _from_value(path: Path, value: JsonValue) -> Snapshot:
     if not isinstance(value, dict):
         raise SnapshotStoreError(path, "must be an object")
     entries = _entries(path, value.get("entries"), "entries")
     observations = _entries(path, value.get("reparse_observations"), "reparse_observations")
     issues = _issues(path, value.get("issues"))
+    exclusions = _exclusions(path, value.get("exclusions"))
     patterns = _strings(path, value.get("generated_patterns"), "generated_patterns")
     return Snapshot(
         root=Path(_string(path, value.get("root"), "root")),
@@ -167,6 +185,7 @@ def _from_value(path: Path, value: JsonValue) -> Snapshot:
         snapshot_id=_string(path, value.get("snapshot_id"), "snapshot_id"),
         scope_policy_id=_string(path, value.get("scope_policy_id"), "scope_policy_id"),
         generated_patterns=patterns,
+        exclusions=exclusions,
         is_casefolded=_boolean(path, value.get("is_casefolded"), "is_casefolded"),
         platform=_string(path, value.get("platform"), "platform"),
         full_reconciled_at=_optional_string(path, value.get("full_reconciled_at"), "full_reconciled_at"),
@@ -214,6 +233,57 @@ def _issues(path: Path, value: JsonValue | None) -> tuple[ScanIssue, ...]:
             )
         )
     return tuple(issues)
+
+
+def _exclusions(
+    path: Path,
+    value: JsonValue | None,
+) -> tuple[SnapshotExclusion, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise SnapshotStoreError(path, "exclusions must be a list")
+    exclusions: list[SnapshotExclusion] = []
+    for item in value:
+        if not isinstance(item, dict):
+            raise SnapshotStoreError(path, "exclusion must be an object")
+        exclusions.append(
+            SnapshotExclusion(
+                path=_string(path, item.get("path"), "exclusion.path"),
+                reason=_string(path, item.get("reason"), "exclusion.reason"),
+                peer_agent_key=_string(
+                    path,
+                    item.get("peer_agent_key"),
+                    "exclusion.peer_agent_key",
+                ),
+                peer_turn_id=_string(
+                    path,
+                    item.get("peer_turn_id"),
+                    "exclusion.peer_turn_id",
+                ),
+                invocation_id=_string(
+                    path,
+                    item.get("invocation_id"),
+                    "exclusion.invocation_id",
+                ),
+                started_seq=_integer(
+                    path,
+                    item.get("started_seq"),
+                    "exclusion.started_seq",
+                ),
+                started_at=_string(
+                    path,
+                    item.get("started_at"),
+                    "exclusion.started_at",
+                ),
+                observer_turn_id=_string(
+                    path,
+                    item.get("observer_turn_id"),
+                    "exclusion.observer_turn_id",
+                ),
+            )
+        )
+    return tuple(exclusions)
 
 
 def _strings(path: Path, value: JsonValue | None, field: str) -> tuple[str, ...]:

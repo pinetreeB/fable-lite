@@ -16,9 +16,38 @@ def record_observed_changes(
     changes: tuple[ObservedChange, ...],
     snapshot_id: str,
 ) -> None:
+    if changes and all(change.manifest_generation > 0 for change in changes):
+        return
+    generation = max((change.manifest_generation for change in changes), default=0)
+    for event in build_observed_change_events(
+        payload,
+        invocation_id,
+        phase,
+        changes,
+        "snapshot:unavailable",
+        snapshot_id,
+    ):
+        _ = record_event(
+            event
+            | {
+                "manifest_generation": max(1, generation),
+                "commit_state": "committed",
+            }
+        )
+
+
+def build_observed_change_events(
+    payload: JsonObject,
+    invocation_id: str,
+    phase: str,
+    changes: tuple[ObservedChange, ...],
+    snapshot_before: str,
+    snapshot_after: str,
+) -> tuple[JsonObject, ...]:
+    events: list[JsonObject] = []
     for source in sorted({change.source for change in changes}):
         group = tuple(change for change in changes if change.source == source)
-        _ = record_event(
+        events.append(
             payload
             | {
                 "schema_version": 2,
@@ -32,12 +61,13 @@ def record_observed_changes(
                 "source_confidence": SOURCE_CONFIDENCE[source],
                 "invocation_id": invocation_id,
                 "observed_at": phase,
-                "snapshot_before": "snapshot:unavailable",
-                "snapshot_after": snapshot_id or "snapshot:unavailable",
-                "current_snapshot_id": snapshot_id,
+                "snapshot_before": snapshot_before or "snapshot:unavailable",
+                "snapshot_after": snapshot_after or "snapshot:unavailable",
+                "current_snapshot_id": snapshot_after,
                 "paths": [_path(change) for change in group],
             }
         )
+    return tuple(events)
 
 
 def _owner(changes: tuple[ObservedChange, ...]) -> str | None:

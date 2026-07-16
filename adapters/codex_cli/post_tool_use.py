@@ -21,7 +21,7 @@ def main() -> int:
         payload = common["read_payload"]()
         from core.adapter_observation import observe_post_tool, resolve_active_invocation, verification_covers
         from core.classify import classify_prompt
-        from core.contract import EDIT_TOOLS, SHELL_TOOLS
+        from core.contract import EDIT_TOOLS, SHELL_TOOLS, record_contract_authored_event
         from core.ledger import load_ledger, record_event
         from core.provenance_types import ProvenanceStatus
         from core.scope_guard import evaluate_scope
@@ -41,6 +41,18 @@ def main() -> int:
                 common["tool_success"](payload),
                 common["tool_output"](payload),
             )
+            if family == "edit":
+                record_contract_authored_event(
+                    {
+                        "project_root": root,
+                        "file_paths": common["tool_file_paths"](payload),
+                        "host": invocation.host,
+                        "agent": invocation.agent,
+                        "session_id": invocation.session_id,
+                        "turn_id": invocation.turn_id,
+                        "attribution": invocation.scorecard_attribution,
+                    }
+                )
             invocation = resolve_active_invocation(Path(root), invocation)
             observation = observe_post_tool(Path(root), invocation)
             verification_command = family == "shell" and is_verification_command(command)

@@ -52,18 +52,37 @@ def fail_open(event_name: str, msg: str) -> int:
 def handle_pre_tool_use(payload: Mapping[str, object]) -> int:
     from adapters.antigravity.tool_io import extract_command, extract_paths_from_input, extract_tool_info, tool_family
     from adapters.intent_command import intent_set_command
-    from core.adapter_observation import begin_invocation, resolve_active_invocation
     from core.classify import classify_prompt
     from core.contract import evaluate_pretool_contract
+    from core.destructive_guard import evaluate_r2_destructive_gate
 
     common = _common()
     tool_name, tool_input = extract_tool_info(payload)
     paths = extract_paths_from_input(tool_input)
     cmd = extract_command(tool_input)
     family = tool_family(tool_name)
+    root = common.project_root(payload)
     prompt_hint = " ".join(paths) if family == "edit" else ""
     invocation = common.canonical_invocation(payload, "pre_tool", family, paths, cmd, False, "")
-    invocation = resolve_active_invocation(Path(common.project_root(payload)), invocation)
+    # R2 first: run before any other ledger read such as resolve_active_invocation.
+    # Any exception raised here is absorbed inside destructive_guard as "degraded"
+    # so a later broad except fail-open cannot undo this decision.
+    r2_result = evaluate_r2_destructive_gate(
+        {
+            "project_root": root,
+            "tool_name": "Bash" if family == "shell" else tool_name,
+            "command": cmd,
+            "host": invocation.host,
+            "agent": invocation.agent,
+            "session_id": invocation.session_id,
+        }
+    )
+    if r2_result.get("decision") == "block":
+        return emit({"decision": "deny", "reason": str(r2_result.get("reason", ""))})
+
+    from core.adapter_observation import begin_invocation, resolve_active_invocation
+
+    invocation = resolve_active_invocation(Path(root), invocation)
     turn_payload = dict(payload)
     turn_payload["agent"] = invocation.agent
     turn_payload["session_id"] = invocation.session_id
@@ -104,6 +123,7 @@ def handle_post_tool_use(payload: Mapping[str, object]) -> int:
 
     from core.adapter_observation import observe_post_tool, resolve_active_invocation, verification_covers
     from core.classify import classify_prompt
+    from core.contract import record_contract_authored_event
     from core.ledger import JsonObject, load_ledger, record_event
     from core.provenance_types import ProvenanceStatus
     from core.scope_guard import evaluate_scope
@@ -113,15 +133,28 @@ def handle_post_tool_use(payload: Mapping[str, object]) -> int:
     if family in {"edit", "shell"}:
         command = extract_command(tool_input)
         success, evidence = verification_result(payload)
+        candidate_paths = extract_paths_from_input(tool_input)
         invocation = common.canonical_invocation(
             payload,
             "post_tool",
             family,
-            extract_paths_from_input(tool_input),
+            candidate_paths,
             command,
             success,
             evidence,
         )
+        if family == "edit":
+            record_contract_authored_event(
+                {
+                    "project_root": root,
+                    "file_paths": candidate_paths,
+                    "host": invocation.host,
+                    "agent": invocation.agent,
+                    "session_id": invocation.session_id,
+                    "turn_id": invocation.turn_id,
+                    "attribution": invocation.scorecard_attribution,
+                }
+            )
         invocation = resolve_active_invocation(Path(root), invocation)
         observation = observe_post_tool(Path(root), invocation)
         verification_command = family == "shell" and is_verification_command(command)

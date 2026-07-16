@@ -104,8 +104,10 @@ def _seed_changed_turn(
     kind: str = "code",
 ) -> None:
     packs = ["investigation"] if requires_investigation else []
+    identity = _turn_identity(case_root)
     _ = record_event(
-        {
+        identity
+        | {
             "project_root": str(case_root),
             "event": "prompt",
             "task_mode": "deep",
@@ -115,13 +117,36 @@ def _seed_changed_turn(
         }
     )
     _ = record_event(
-        {
+        identity
+        | {
             "project_root": str(case_root),
             "event": "change",
             "path": path,
             "kind": kind,
         }
     )
+
+
+def _turn_identity(case_root: Path) -> JsonObject:
+    identities: dict[str, JsonObject] = {
+        "claude_code": {
+            "host": "claude_code",
+            "session_id": "claude-stop-conformance",
+            "agent": "claude",
+        },
+        "codex_cli": {
+            "host": "codex_cli",
+            "session_id": "codex-stop-conformance",
+            "agent": "codex",
+            "turn_id": "turn-1",
+        },
+        "antigravity": {
+            "host": "antigravity",
+            "session_id": "agy-stop-conformance",
+            "agent": "antigravity",
+        },
+    }
+    return identities[case_root.name]
 
 
 def test_unverified_change_blocks_twice_then_allows_across_stop_payloads(
@@ -158,7 +183,8 @@ def test_fresh_verification_allows_immediately_after_first_stop_block(
 
         # When: a successful verification is recorded after the change epoch.
         _ = record_event(
-            {
+            _turn_identity(case_root)
+            | {
                 "project_root": str(case_root),
                 "event": "verification",
                 "command": "python -m pytest tests/ -q",

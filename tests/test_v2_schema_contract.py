@@ -75,6 +75,22 @@ def _set_negative_confidence(event: JsonObject) -> None:
     event["confidence"] = -0.01
 
 
+def _drop_manifest_generation(event: JsonObject) -> None:
+    _ = event.pop("manifest_generation")
+
+
+def _set_boolean_manifest_generation(event: JsonObject) -> None:
+    event["manifest_generation"] = True
+
+
+def _drop_commit_state(event: JsonObject) -> None:
+    _ = event.pop("commit_state")
+
+
+def _set_invalid_commit_state(event: JsonObject) -> None:
+    event["commit_state"] = "pending"
+
+
 def _drop_path_before(event: JsonObject) -> None:
     _ = _paths(event)[0].pop("before")
 
@@ -116,6 +132,10 @@ def test_v2_schema_rejects_malformed_confidence_paths_and_covers() -> None:
     cases: list[tuple[str, Mutation, str]] = [
         ("change-event.json", _set_high_confidence, "confidence"),
         ("change-event.json", _set_negative_confidence, "confidence"),
+        ("change-event.json", _drop_manifest_generation, "manifest_generation"),
+        ("change-event.json", _set_boolean_manifest_generation, "manifest_generation"),
+        ("change-event.json", _drop_commit_state, "commit_state"),
+        ("change-event.json", _set_invalid_commit_state, "commit_state"),
         ("change-event.json", _drop_path_before, "paths[0].before"),
         (
             "change-event.json",

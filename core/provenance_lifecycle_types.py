@@ -23,6 +23,7 @@ class ObservedChange:
     owner: str | None
     attribution_status: str
     observed_by: tuple[str, ...]
+    manifest_generation: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +34,10 @@ class Invocation:
     seq: int
     snapshot_id: str
     candidate_paths: frozenset[str]
+    event_agent: str = ""
+    host: str = "default"
+    session_id: str = "default"
+    observed_at: str = "post_tool"
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +54,7 @@ class ObservationInput:
     deltas: tuple[NetDelta, ...]
     agent: str
     source: str
+    candidate_keys: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)

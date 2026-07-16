@@ -20,11 +20,12 @@ def main() -> int:
         from adapters.claude_code.common import canonical_invocation, emit, project_root, read_payload, tool_command, tool_file_paths, tool_input
         from adapters.intent_command import intent_set_command
         payload = read_payload()
-        from core.adapter_observation import begin_invocation, resolve_active_invocation
         from core.contract import EDIT_TOOLS, SHELL_TOOLS, evaluate_pretool_contract
+        from core.destructive_guard import evaluate_r2_destructive_gate
 
         tool_name = payload.get("tool_name")
         family = "edit" if tool_name in EDIT_TOOLS else "shell" if tool_name in SHELL_TOOLS else "other"
+        root = project_root(payload)
         invocation = canonical_invocation(
             payload,
             "pre_tool",
@@ -34,7 +35,28 @@ def main() -> int:
             False,
             "",
         )
-        invocation = resolve_active_invocation(Path(project_root(payload)), invocation)
+        # R2 first: run before any other ledger read such as resolve_active_invocation.
+        # Any exception raised here is absorbed inside destructive_guard as "degraded"
+        # so a later broad except fail-open cannot undo this decision.
+        r2_result = evaluate_r2_destructive_gate(
+            {
+                "project_root": root,
+                "tool_name": "Bash" if family == "shell" else str(payload.get("tool_name", "")),
+                "command": tool_command(payload),
+                "host": invocation.host,
+                "agent": invocation.agent,
+                "session_id": invocation.session_id,
+            }
+        )
+        if r2_result["decision"] == "block":
+            return emit({"decision": "block", "reason": str(r2_result["reason"])})
+
+        from core.adapter_observation import begin_invocation, resolve_active_invocation
+
+        invocation = resolve_active_invocation(Path(root), invocation)
+        attribution = invocation.scorecard_attribution
+        if attribution == "legacy_default" and invocation.session_id != "default":
+            attribution = "exact"
         input_text = json.dumps(tool_input(payload), ensure_ascii=False)
         result = evaluate_pretool_contract(
             {
@@ -48,7 +70,7 @@ def main() -> int:
                 "agent": invocation.agent,
                 "session_id": invocation.session_id,
                 "turn_id": invocation.turn_id,
-                "attribution": invocation.scorecard_attribution,
+                "attribution": attribution,
             }
         )
         if result["decision"] == "block":

@@ -5,8 +5,8 @@ import os
 from pathlib import Path
 import subprocess
 
-from .agent_log import ledger_transaction
 from .provenance import SnapshotScanOptions, snapshot_workspace_with_options
+from .provenance_manifest import ManifestStoreError, commit_manifest, load_manifest_view
 from .provenance_policy import (
     is_hard_excluded,
     is_path_in_scope,
@@ -14,7 +14,7 @@ from .provenance_policy import (
     load_provenance_config,
 )
 from .provenance_lifecycle_start import trusted_default_policy_migration
-from .provenance_store import SnapshotStoreError, save_turn_baseline_from_current, save_workspace_current
+from .provenance_store import SnapshotStoreError
 from .provenance_types import (
     DEFAULT_FULL_SCAN_SECONDS,
     DEFAULT_INCREMENTAL_SCAN_SECONDS,
@@ -76,31 +76,53 @@ def prime_candidate_scope(
     turn_id: str,
     candidates: frozenset[str],
 ) -> bool:
+    try:
+        view = load_manifest_view(root)
+    except (ManifestStoreError, SnapshotStoreError):
+        return False
+    state.current = view.snapshot
+    state.generation = view.generation
     candidates = _new_existing_candidates(root, state.current, candidates)
     if not candidates:
         return True
-    generation = state.generation
-    snapshot = scan_snapshot(root, state.current, candidates, False)
-    if snapshot.status is not ProvenanceStatus.COMPLETE:
-        return False
-    with ledger_transaction(str(root)):
-        if state.generation != generation:
+    for _ in range(2):
+        try:
+            view = load_manifest_view(root)
+        except (ManifestStoreError, SnapshotStoreError):
+            return False
+        state.current = view.snapshot
+        state.generation = view.generation
+        snapshot = scan_snapshot(root, view.snapshot, candidates, False)
+        if snapshot.status is not ProvenanceStatus.COMPLETE:
             return False
         turn = state.turns[(agent, turn_id)]
-        before = state.current
-        reconciled_at = before.full_reconciled_at if before is not None and before.snapshot_id == snapshot.snapshot_id else None
+        before = view.snapshot
+        reconciled_at = (
+            before.full_reconciled_at
+            if before is not None and before.snapshot_id == snapshot.snapshot_id
+            else None
+        )
         snapshot = replace(snapshot, full_reconciled_at=reconciled_at)
         try:
-            save_workspace_current(root, snapshot)
-            save_turn_baseline_from_current(root, agent, turn_id, snapshot)
-        except SnapshotStoreError:
+            committed = commit_manifest(
+                root,
+                view.generation,
+                before.snapshot_id if before is not None else "snapshot:unavailable",
+                snapshot,
+                (),
+                (agent, turn_id),
+            )
+        except (ManifestStoreError, SnapshotStoreError):
             return False
-        state.current = snapshot
-        state.generation += 1
+        if committed is None:
+            continue
+        state.current = committed.snapshot
+        state.generation = committed.generation
         state.incomplete = False
         state.current_is_stop_full = reconciled_at is not None
-        state.turns[(agent, turn_id)] = replace(turn, baseline=snapshot)
+        state.turns[(agent, turn_id)] = replace(turn, baseline=committed.snapshot)
         return True
+    return False
 
 
 def persisted_force_paths(root: Path, previous: Snapshot | None) -> frozenset[str]:

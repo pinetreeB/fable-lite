@@ -231,7 +231,7 @@ def test_pretool_resume_full_bootstraps_after_workspace_store_failure(
 ) -> None:
     _write(tmp_path / "app.py", "stable")
     error = SnapshotStoreError(workspace_current_path(tmp_path), "injected")
-    with patch("core.provenance_lifecycle.save_workspace_current", side_effect=error):
+    with patch("core.provenance_manifest.save_workspace_current", side_effect=error):
         failed = ProvenanceLifecycle(tmp_path).start_turn(
             "codex", "turn-bootstrap"
         )
@@ -418,7 +418,7 @@ def test_snapshot_store_write_failure_reports_typed_reason(tmp_path: Path) -> No
     _write(tmp_path / "app.py", "stable")
     error = SnapshotStoreError(workspace_current_path(tmp_path), "injected")
 
-    with patch("core.provenance_lifecycle.save_workspace_current", side_effect=error):
+    with patch("core.provenance_manifest.save_workspace_current", side_effect=error):
         result = ProvenanceLifecycle(tmp_path).start_turn("codex", "turn-write")
 
     assert result.status is ProvenanceStatus.INCOMPLETE

@@ -33,13 +33,18 @@ def load_ledger(payload: Mapping[str, JsonValue]) -> JsonObject:
         loaded: JsonValue = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         _preserve_corrupt_ledger(path)
-        return default_ledger()
+        return _expose_attribution_health(default_ledger(), path, degraded=True)
+    except FileNotFoundError:
+        return _expose_attribution_health(default_ledger(), path)
     except OSError:
-        return default_ledger()
+        return _expose_attribution_health(default_ledger(), path, degraded=True)
     if isinstance(loaded, dict):
         schema_version = loaded.get("schema_version")
         if schema_version == 2:
-            return _validate_v2_with_derived_cache_fail_open(loaded)
+            return _expose_attribution_health(
+                _validate_v2_with_derived_cache_fail_open(loaded),
+                path,
+            )
         if schema_version is not None and (
             not isinstance(schema_version, int)
             or isinstance(schema_version, bool)
@@ -48,8 +53,26 @@ def load_ledger(payload: Mapping[str, JsonValue]) -> JsonObject:
             raise LedgerSchemaError("ledger.schema_version", "must be 1 or 2")
         merged = default_ledger()
         merged.update(loaded)
-        return merged
-    return default_ledger()
+        return _expose_attribution_health(merged, path)
+    _preserve_corrupt_ledger(path)
+    return _expose_attribution_health(default_ledger(), path, degraded=True)
+
+
+def _expose_attribution_health(
+    ledger: JsonObject,
+    path: Path,
+    *,
+    degraded: bool = False,
+) -> JsonObject:
+    ledger["attribution_degraded"] = degraded or _has_corrupt_backup(path)
+    return ledger
+
+
+def _has_corrupt_backup(path: Path) -> bool:
+    try:
+        return next(path.parent.glob("*.corrupt-*.bak"), None) is not None
+    except OSError:
+        return True
 
 
 def _validate_v2_with_derived_cache_fail_open(loaded: JsonObject) -> JsonObject:

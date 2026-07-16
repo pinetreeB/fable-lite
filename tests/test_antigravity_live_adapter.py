@@ -8,6 +8,7 @@ from typing import cast
 
 from adapters.antigravity import tool_io
 from adapters.antigravity.hook_common import canonical_invocation, project_root
+from core.agent_log import load_agent_events
 from core.ledger import JsonObject, load_ledger
 
 
@@ -142,5 +143,7 @@ def test_five_live_events_dispatch_and_all_inputs_fail_open_with_exit_zero(tmp_p
 
     ledger = load_ledger({"project_root": str(tmp_path)})
     turns = cast(dict[str, object], ledger["active_turns"])
-    turn = cast(dict[str, object], turns["antigravity:agy-live-session:antigravity"])
-    assert turn["turn_id"] == "turn:agy-live-session:7"
+    assert "antigravity:agy-live-session:antigravity" not in turns
+    events = load_agent_events(str(tmp_path), "antigravity")
+    assert events is not None
+    assert any(event.get("event") == "turn_finished" for event in events)

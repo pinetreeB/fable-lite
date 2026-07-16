@@ -94,7 +94,7 @@ def test_clean_turn_baseline_atomically_links_workspace_current(tmp_path: Path) 
     _ = lifecycle.finish_turn("bench", "first")
 
     # When: a clean fast-path turn starts.
-    with patch("core.provenance_lifecycle.save_workspace_current", wraps=save_workspace_current) as save:
+    with patch("core.provenance_manifest.save_workspace_current", wraps=save_workspace_current) as save:
         result = lifecycle.start_turn("bench", "second")
     baseline = lifecycle.turn_baseline_path("bench", "second")
 

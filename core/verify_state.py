@@ -1,13 +1,15 @@
+"""# noqa: SIZE_OK — W3 turn-scoped Stop transitions must remain in this existing gate module."""
+
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 import os
 from typing import TypeAlias
 
-from .agent_log import ledger_transaction
+from .agent_log import append_agent_event, ledger_transaction
 from .ledger import JsonObject, JsonValue, load_ledger, save_ledger
 from .ledger_v1 import sequence_value
-from .ledger_v2 import refresh_v1_projection
+from .ledger_v2 import apply_v2_event, refresh_v1_projection
 from .compliance import check_investigation_compliance
 from .scorecard import (
     GateAction,
@@ -181,7 +183,7 @@ def _project_root(payload: Mapping[str, JsonValue]) -> str:
 def _stop_blocks(ledger: Mapping[str, JsonValue], payload: Mapping[str, JsonValue]) -> int:
     turn = active_turn(ledger, payload)
     if turn is None:
-        return sequence_value(ledger.get("stop_blocks"))
+        return sequence_value(ledger.get("stop_blocks")) if _legacy_identity(payload) else 0
     blocks = turn.get("blocks")
     return sequence_value(blocks.get("stop")) if isinstance(blocks, dict) else 0
 
@@ -189,7 +191,8 @@ def _stop_blocks(ledger: Mapping[str, JsonValue], payload: Mapping[str, JsonValu
 def _increment_stop_block(ledger: JsonObject, payload: Mapping[str, JsonValue]) -> None:
     turn = active_turn(ledger, payload)
     if turn is None:
-        ledger["stop_blocks"] = sequence_value(ledger.get("stop_blocks")) + 1
+        if _legacy_identity(payload):
+            ledger["stop_blocks"] = sequence_value(ledger.get("stop_blocks")) + 1
         return
     blocks = turn.get("blocks")
     if not isinstance(blocks, dict):
@@ -237,7 +240,7 @@ _CONFIG_GUIDE = (
 )
 
 
-def _format_budget_paths(top_paths: list[JsonObject]) -> str:
+def _format_budget_paths(top_paths: Sequence[Mapping[str, str | int]]) -> str:
     return ", ".join(
         f"{item['path']} (entries={item['entries']}, bytes={item['bytes']})"
         for item in top_paths
@@ -280,7 +283,7 @@ def evaluate_without_io(
     ledger: Mapping[str, JsonValue], payload: Mapping[str, JsonValue]
 ) -> Decision:
     turn = active_turn(ledger, payload)
-    state: Mapping[str, JsonValue] = turn if turn is not None else ledger
+    state = _gate_state(ledger, payload, turn)
     changed = (
         bool(_as_str_list(state.get("changed_files_seen")))
         or _positive_sequence(state.get("last_remote_mutation_seq")) is not None
@@ -288,6 +291,19 @@ def evaluate_without_io(
     )
     verified = has_successful_verification(ledger, payload)
     home_root_unsupported = is_user_home_root(_project_root(payload))
+
+    if (
+        state.get("baseline_status") == "missing"
+        and state.get("provenance_mutation_capable") is not True
+    ):
+        return {
+            "decision": "allow",
+            "message": (
+                "[smtw] turn_not_started: baseline 관측이 없어 clean을 주장하지 않고 "
+                "read-only 턴을 안내 통과합니다. / Missing baseline; allowing this read-only "
+                "turn without a clean claim."
+            ),
+        }
 
     if (
         not home_root_unsupported
@@ -381,15 +397,72 @@ def evaluate_stop(payload: Mapping[str, JsonValue]) -> Decision:
 
         design_decision = evaluate_design_stop(ledger, payload)
         if design_decision is not None:
-            if not save_ledger(payload, ledger):
+            rendered = _with_scorecard_line(design_decision, ledger, payload)
+            _finish_allowed_turn(ledger, payload, rendered)
+            if design_decision.get("decision") != "allow" and not save_ledger(payload, ledger):
                 mark_cached_session_incomplete(ledger, payload)
-            return design_decision
+            return rendered
         if ordinary_capped:
-            return _with_scorecard_line(decision, ledger, payload)
+            rendered = _with_scorecard_line(decision, ledger, payload)
+            _finish_allowed_turn(ledger, payload, rendered)
+            return rendered
         if _record_stop_recoveries(ledger, payload):
             if not save_ledger(payload, ledger):
                 mark_cached_session_incomplete(ledger, payload)
-        return _with_scorecard_line(decision, ledger, payload)
+        rendered = _with_scorecard_line(decision, ledger, payload)
+        _finish_allowed_turn(ledger, payload, rendered)
+        return rendered
+
+
+def _gate_state(
+    ledger: Mapping[str, JsonValue],
+    payload: Mapping[str, JsonValue],
+    turn: JsonObject | None,
+) -> Mapping[str, JsonValue]:
+    if turn is not None:
+        return turn
+    if ledger.get("schema_version") != 2 or _legacy_identity(payload):
+        return ledger
+    return {
+        "baseline_status": "missing",
+        "provenance_incomplete": True,
+        "provenance_status": ProvenanceStatus.INCOMPLETE.value,
+        "provenance_status_reason": ProvenanceReason.TURN_NOT_STARTED.value,
+    }
+
+
+def _legacy_identity(payload: Mapping[str, JsonValue]) -> bool:
+    return (
+        payload.get("attribution") == "legacy_default"
+        or payload.get("identity_synthetic") is True
+        or not any(
+            isinstance(payload.get(field), str) and payload.get(field)
+            for field in ("host", "session_id", "agent")
+        )
+    )
+
+
+def _finish_allowed_turn(
+    ledger: JsonObject,
+    payload: Mapping[str, JsonValue],
+    decision: Mapping[str, JsonValue],
+) -> None:
+    if decision.get("decision") != "allow" or active_turn(ledger, payload) is None:
+        return
+    event: JsonObject = {
+        key: value
+        for key in ("project_root", "cwd", "host", "agent", "session_id", "turn_id", "attribution")
+        if (value := payload.get(key)) is not None
+    }
+    event["event"] = "turn_finished"
+    event["seq"] = sequence_value(ledger.get("event_seq")) + 1
+    _ = apply_v2_event(ledger, event)
+    if not save_ledger(payload, ledger):
+        mark_cached_session_incomplete(ledger, payload)
+        return
+    agent = payload.get("agent")
+    if isinstance(agent, str) and agent:
+        append_agent_event(_project_root(payload), agent, event)
 
 
 def _with_scorecard_line(

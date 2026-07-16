@@ -9,6 +9,7 @@ import tempfile
 from core.ledger_schema import JsonValue
 
 from .provenance_bench_metrics import MIB, budgets_for_scale
+from .provenance_bench_attribution_receipt import attribution_value
 from .provenance_bench_models import BenchResult, ScaleResult, ScorecardBenchResult
 
 
@@ -41,6 +42,8 @@ def _receipt(result: BenchResult, seed: int) -> dict[str, JsonValue]:
     }
     if result.scorecard is not None:
         receipt["scorecard"] = _scorecard_value(result.scorecard)
+    if result.attribution is not None:
+        receipt["attribution"] = attribution_value(result.attribution)
     return receipt
 
 

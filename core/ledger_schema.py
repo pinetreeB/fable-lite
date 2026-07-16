@@ -1,3 +1,5 @@
+"""# noqa: SIZE_OK  — centralized v2 trust-boundary schema; the F1 card forbids a new module"""
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -166,6 +168,8 @@ def validate_v2_ledger(value: JsonValue) -> JsonObject:
         _required(ledger, "manifest_generation", "ledger"),
         "ledger.manifest_generation",
     )
+    _validate_manifest_transaction(ledger)
+    _validate_path_attribution(ledger)
     active_turns = _object(_required(ledger, "active_turns", "ledger"), "ledger.active_turns")
     for agent, raw_turn in active_turns.items():
         _string(agent, "ledger.active_turns key")
@@ -195,6 +199,21 @@ def validate_v2_ledger(value: JsonValue) -> JsonObject:
                 _reject(f"{field}.migration_mode", "must equal legacy_turn")
         if "legacy_seq_less" in turn:
             _boolean(turn["legacy_seq_less"], f"{field}.legacy_seq_less")
+        for timestamp_field in ("started_at", "last_event_at", "finish_requested_at"):
+            if timestamp_field in turn:
+                _string(turn[timestamp_field], f"{field}.{timestamp_field}")
+        if "baseline_status" in turn:
+            baseline_status = _string(turn["baseline_status"], f"{field}.baseline_status")
+            if baseline_status not in {"missing", "ready"}:
+                _reject(f"{field}.baseline_status", "must be missing or ready")
+        if "finish_state" in turn:
+            finish_state = _string(turn["finish_state"], f"{field}.finish_state")
+            if finish_state != "finish_requested":
+                _reject(f"{field}.finish_state", "must equal finish_requested")
+        if "finish_requested_seq" in turn:
+            _nonnegative_integer(turn["finish_requested_seq"], f"{field}.finish_requested_seq")
+        if "invocations" in turn:
+            _validate_invocations(turn["invocations"], f"{field}.invocations")
         _validate_design_state(turn, field)
     if "scorecard_cache" in ledger:
         _validate_scorecard_cache(ledger["scorecard_cache"])
@@ -206,6 +225,180 @@ def validate_v2_ledger(value: JsonValue) -> JsonObject:
     if "scorecard_evicted_keys" in ledger:
         _validate_scorecard_evicted_keys(ledger["scorecard_evicted_keys"])
     return ledger
+
+
+def _validate_invocations(value: JsonValue, field: str) -> None:
+    records = _object(value, field)
+    for invocation_id, raw_entry in records.items():
+        _string(invocation_id, f"{field} key")
+        entry_field = f"{field}.{invocation_id}"
+        entry = _object(raw_entry, entry_field)
+        _string_list(
+            _required(entry, "candidate_paths", entry_field),
+            f"{entry_field}.candidate_paths",
+        )
+        if "status" in entry:
+            status = _string(entry["status"], f"{entry_field}.status")
+            if status not in {"open", "closed"}:
+                _reject(f"{entry_field}.status", "must be open or closed")
+        if "started_seq" in entry:
+            _nonnegative_integer(
+                entry["started_seq"],
+                f"{entry_field}.started_seq",
+            )
+        if "started_at" in entry:
+            _string(entry["started_at"], f"{entry_field}.started_at")
+        if "completed_seq" in entry:
+            _nonnegative_integer(
+                entry["completed_seq"],
+                f"{entry_field}.completed_seq",
+            )
+        if "completed_at" in entry:
+            _string(entry["completed_at"], f"{entry_field}.completed_at")
+
+
+def _validate_path_attribution(ledger: JsonObject) -> None:
+    for name in ("attribution_capacity_exceeded", "attribution_degraded"):
+        if name in ledger:
+            _boolean(ledger[name], f"ledger.{name}")
+    if "path_attribution" not in ledger:
+        return
+    index = _object(ledger["path_attribution"], "ledger.path_attribution")
+    if len(index) > 10_000:
+        _reject("ledger.path_attribution", "must contain at most 10000 paths")
+    for path, raw_entry in index.items():
+        _string(path, "ledger.path_attribution key")
+        field = f"ledger.path_attribution.{path}"
+        entry = _object(raw_entry, field)
+        _positive_integer(_required(entry, "generation", field), f"{field}.generation")
+        status = _string(_required(entry, "status", field), f"{field}.status")
+        if status not in {"exclusive", "contended"}:
+            _reject(f"{field}.status", "must be exclusive or contended")
+        owners = _required(entry, "owners", field)
+        if not isinstance(owners, list) or not owners:
+            _reject(f"{field}.owners", "must be a non-empty list")
+        if len(owners) > 8:
+            _reject(f"{field}.owners", "must contain at most 8 owners")
+        agent_keys: list[str] = []
+        for index_value, raw_owner in enumerate(owners):
+            owner_field = f"{field}.owners[{index_value}]"
+            owner = _object(raw_owner, owner_field)
+            agent_keys.append(
+                _string(
+                    _required(owner, "agent_key", owner_field),
+                    f"{owner_field}.agent_key",
+                )
+            )
+            _string(_required(owner, "turn_id", owner_field), f"{owner_field}.turn_id")
+            _positive_integer(
+                _required(owner, "revision_seq", owner_field),
+                f"{owner_field}.revision_seq",
+            )
+            _string(
+                _required(owner, "after_digest", owner_field),
+                f"{owner_field}.after_digest",
+            )
+            _string(
+                _required(owner, "invocation_id", owner_field),
+                f"{owner_field}.invocation_id",
+            )
+            _boolean(
+                _required(owner, "settled", owner_field),
+                f"{owner_field}.settled",
+            )
+        if len(agent_keys) != len(set(agent_keys)):
+            _reject(f"{field}.owners", "must contain one latest revision per agent")
+        if "overflow" in entry:
+            overflow = _boolean(entry["overflow"], f"{field}.overflow")
+            if overflow and status != "contended":
+                _reject(f"{field}.status", "must be contended when overflow is true")
+
+
+def _validate_manifest_transaction(ledger: JsonObject) -> None:
+    if "manifest_snapshot_id" in ledger:
+        _string(ledger["manifest_snapshot_id"], "ledger.manifest_snapshot_id")
+    if "manifest_pending" in ledger:
+        pending = _object(ledger["manifest_pending"], "ledger.manifest_pending")
+        base = _nonnegative_integer(
+            _required(pending, "base_generation", "ledger.manifest_pending"),
+            "ledger.manifest_pending.base_generation",
+        )
+        target = _positive_integer(
+            _required(pending, "target_generation", "ledger.manifest_pending"),
+            "ledger.manifest_pending.target_generation",
+        )
+        if target != base + 1:
+            _reject(
+                "ledger.manifest_pending.target_generation",
+                "must equal base_generation + 1",
+            )
+        _string(
+            _required(pending, "snapshot_before", "ledger.manifest_pending"),
+            "ledger.manifest_pending.snapshot_before",
+        )
+        _string(
+            _required(pending, "snapshot_after", "ledger.manifest_pending"),
+            "ledger.manifest_pending.snapshot_after",
+        )
+        _validate_manifest_events(
+            _required(pending, "events", "ledger.manifest_pending"),
+            "ledger.manifest_pending.events",
+            target,
+            "uncommitted",
+        )
+        baseline_agent = pending.get("baseline_agent")
+        baseline_turn_id = pending.get("baseline_turn_id")
+        if (baseline_agent is None) != (baseline_turn_id is None):
+            _reject(
+                "ledger.manifest_pending.baseline",
+                "agent and turn_id must be present together",
+            )
+        if baseline_agent is not None and baseline_turn_id is not None:
+            _string(baseline_agent, "ledger.manifest_pending.baseline_agent")
+            _string(baseline_turn_id, "ledger.manifest_pending.baseline_turn_id")
+    if "manifest_event_journal" in ledger:
+        _validate_manifest_events(
+            ledger["manifest_event_journal"],
+            "ledger.manifest_event_journal",
+        )
+
+
+def _validate_manifest_events(
+    value: JsonValue,
+    field: str,
+    generation: int | None = None,
+    commit_state: str | None = None,
+) -> None:
+    if not isinstance(value, list):
+        _reject(field, "must be a list")
+    for index, raw_event in enumerate(value):
+        event_field = f"{field}[{index}]"
+        event = _object(raw_event, event_field)
+        _string(_required(event, "event_id", event_field), f"{event_field}.event_id")
+        _positive_integer(_required(event, "seq", event_field), f"{event_field}.seq")
+        event_generation = _positive_integer(
+            _required(event, "manifest_generation", event_field),
+            f"{event_field}.manifest_generation",
+        )
+        event_state = _string(
+            _required(event, "commit_state", event_field),
+            f"{event_field}.commit_state",
+        )
+        if event_state not in {"uncommitted", "committed"}:
+            _reject(
+                f"{event_field}.commit_state",
+                "must be uncommitted or committed",
+            )
+        if generation is not None and event_generation != generation:
+            _reject(
+                f"{event_field}.manifest_generation",
+                "must match the pending target generation",
+            )
+        if commit_state is not None and event_state != commit_state:
+            _reject(
+                f"{event_field}.commit_state",
+                f"must equal {commit_state}",
+            )
 
 
 def _validate_scorecard_cache(value: JsonValue) -> None:

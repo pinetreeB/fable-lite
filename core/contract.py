@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+import hashlib
 import json
 from pathlib import Path
+import re
 import shlex
 from typing import Final, TypeAlias, TypeGuard, cast
 
@@ -15,7 +17,7 @@ from .gate_counters import (
     recover_checkpoint_gates,
 )
 from .agent_log import ledger_transaction
-from .ledger import JsonObject, JsonValue, load_ledger, save_ledger, state_dir
+from .ledger import JsonObject, JsonValue, load_ledger, record_event, save_ledger, state_dir
 from .risk_terms import risk_flags
 from .scorecard import GateAction, ReasonCode, Resolution, ScorecardSchemaError
 from .scorecard_store import (
@@ -43,8 +45,61 @@ class RmInvocation:
     targets: tuple[str, ...]
 
 
+CONTRACTS_DIRNAME: Final[str] = "contracts"
+_SAFE_KEY_RE = re.compile(r"[^A-Za-z0-9_.-]+")
+
+
 def contract_path(project_root: str) -> Path:
     return state_dir(project_root) / "contract.json"
+
+
+def _safe_key(agent_key: str) -> str:
+    return _SAFE_KEY_RE.sub("-", agent_key).strip("-") or "agent"
+
+
+def _identity_hash(agent_key: str) -> str:
+    return hashlib.sha256(agent_key.encode("utf-8")).hexdigest()[:16]
+
+
+def namespaced_contract_path(project_root: str, agent_key: str) -> Path:
+    # 설계 §5-1: contracts/<safe-key>-<identity-hash>.json — Windows `:` 등 불가문자를
+    # safe prefix로 치환하되, 해시 suffix가 있어 safe_key 충돌이 나도 파일이 섞이지 않는다.
+    filename = f"{_safe_key(agent_key)}-{_identity_hash(agent_key)}.json"
+    return state_dir(project_root) / CONTRACTS_DIRNAME / filename
+
+
+def _identity_agent_key(payload: Mapping[str, JsonValue]) -> str:
+    host = payload.get("host")
+    session_id = payload.get("session_id")
+    agent = payload.get("agent")
+    return ":".join(
+        value if isinstance(value, str) and value else "unknown"
+        for value in (host, session_id, agent)
+    )
+
+
+def _is_exact_identity(payload: Mapping[str, JsonValue]) -> bool:
+    return payload.get("attribution") == "exact"
+
+
+def _looks_exact_identity_key(agent_key: str) -> bool:
+    parts = agent_key.split(":", 2)
+    return len(parts) == 3 and bool(parts[1]) and parts[1] != "default"
+
+
+def _single_active_exact_identity(root: str, caller_agent_key: str) -> bool:
+    # 설계 §5-1: legacy contract.json 폴백은 활성 exact identity가 나(caller) 하나뿐일
+    # 때만 허용 — 다른 exact identity가 하나라도 활성 상태면 legacy 무시(오염 방지).
+    ledger = load_ledger({"project_root": root})
+    active = ledger.get("active_turns")
+    if not isinstance(active, dict):
+        return True
+    others = {
+        key
+        for key in active
+        if key != caller_agent_key and _looks_exact_identity_key(key)
+    }
+    return not others
 
 
 def _project_root(payload: Mapping[str, JsonValue]) -> str:
@@ -76,9 +131,72 @@ def _command(payload: Mapping[str, JsonValue]) -> str:
     return value if isinstance(value, str) else ""
 
 
-def _is_contract_authoring(path: str) -> bool:
+def _is_contract_authoring(path: str, payload: Mapping[str, JsonValue]) -> bool:
     normalized = path.replace("\\", "/")
-    return normalized.endswith(".fable-lite/contract.json")
+    if normalized.endswith(".fable-lite/contract.json"):
+        return True
+    if not _is_exact_identity(payload):
+        return False
+    agent_key = _identity_agent_key(payload)
+    root = _project_root(payload)
+    namespaced = str(namespaced_contract_path(root, agent_key)).replace("\\", "/")
+    return normalized.endswith(f".fable-lite/{CONTRACTS_DIRNAME}/{namespaced.rsplit('/', 1)[-1]}")
+
+
+def _targets_state_dir(root: str, raw_path: str) -> bool:
+    if not raw_path:
+        return False
+    normalized = raw_path.strip().strip("\"'")
+    if not normalized:
+        return False
+    candidate = Path(normalized)
+    try:
+        resolved = candidate.resolve() if candidate.is_absolute() else (Path(root) / candidate).resolve()
+        base = state_dir(root).resolve()
+    except OSError:
+        return False
+    try:
+        _ = resolved.relative_to(base)
+    except ValueError:
+        return False
+    return True
+
+
+def _shell_state_dir_hints(command: str) -> list[str]:
+    if not command:
+        return []
+    from .shell_hints import shell_candidate_paths
+
+    return list(shell_candidate_paths(command))
+
+
+def evaluate_state_file_friction(payload: Mapping[str, JsonValue]) -> Decision:
+    # 설계 §6-5: `.fable-lite/**` 직접 변경 명령의 마찰 장치. 실질 방어는 이중 근거
+    # 교차 확인(§6-5 본문)이며, 이 검사는 우발적/합리화성 직접 편집을 막는 보조 장치다.
+    tool = _tool_name(payload)
+    if tool not in GUARDED_TOOLS:
+        return {"decision": "allow", "message": "not a guarded tool"}
+    root = _project_root(payload)
+    targets = list(_string_list(payload.get("file_paths")))
+    if tool in SHELL_TOOLS:
+        targets.extend(_shell_state_dir_hints(_command(payload)))
+    offending = [
+        target
+        for target in targets
+        if _targets_state_dir(root, target)
+        and not (tool in EDIT_TOOLS and _is_contract_authoring(target, payload))
+    ]
+    if not offending:
+        return {"decision": "allow", "message": "no state-file friction"}
+    return {
+        "decision": "block",
+        "reason": (
+            "[smtw] R2-friction: `.fable-lite/**` 상태 파일 직접 변경은 차단됩니다 "
+            "(마찰 장치 — 실질 방어는 §6-5 이중 근거 교차 확인). "
+            "정식 절차(계약 authoring·검증·오케스트레이터 경유)를 사용하세요. "
+            f"target={offending[0]}"
+        ),
+    }
 
 
 def _is_goals_authoring(paths: list[str], command: str) -> bool:
@@ -259,10 +377,9 @@ def _clean_token(token: str) -> str:
 
 
 def evaluate_r1_contract(payload: Mapping[str, JsonValue]) -> Decision:
-    root = _project_root(payload)
     if not _high_risk(payload):
         return {"decision": "allow", "message": "not high-risk"}
-    if _valid_contract(root):
+    if _valid_contract_for_payload(payload):
         return {"decision": "allow", "message": "valid high-risk contract found"}
     return {
         "decision": "block",
@@ -285,8 +402,8 @@ def evaluate_r1_contract_with_scorecard(
             ledger = load_ledger(payload)
             decision = evaluate_r1_contract(payload)
             if decision.get("decision") == "block":
-                _record_r1_scorecard(ledger, payload, GateAction.BLOCK)
-                save_ledger(payload, ledger)
+                _ = _record_r1_scorecard(ledger, payload, GateAction.BLOCK)
+                _ = save_ledger(payload, ledger)
                 return decision
             if _record_r1_scorecard(
                 ledger,
@@ -294,7 +411,7 @@ def evaluate_r1_contract_with_scorecard(
                 GateAction.RECOVER,
                 Resolution.CONTRACT,
             ):
-                save_ledger(payload, ledger)
+                _ = save_ledger(payload, ledger)
             return decision
     except (OSError, TimeoutError):
         return evaluate_r1_contract(payload)
@@ -328,9 +445,9 @@ def _record_r1_scorecard(
     return True
 
 
-def _valid_contract(root: str) -> bool:
+def _valid_contract_at(path: Path) -> bool:
     try:
-        raw = cast(object, json.loads(contract_path(root).read_text(encoding="utf-8")))
+        raw = cast(object, json.loads(path.read_text(encoding="utf-8")))
     except (OSError, json.JSONDecodeError):
         return False
     if not isinstance(raw, dict):
@@ -350,6 +467,86 @@ def _valid_contract(root: str) -> bool:
     return not any(marker in text for marker in FAKE_EVIDENCE)
 
 
+def _valid_contract(root: str) -> bool:
+    return _valid_contract_at(contract_path(root))
+
+
+def _namespaced_contract_suffix(root: str, agent_key: str) -> str:
+    return f".fable-lite/{CONTRACTS_DIRNAME}/{namespaced_contract_path(root, agent_key).name}"
+
+
+def _contract_authored_event_matches(root: str, agent: str, contract_suffix: str, digest: str) -> bool:
+    from .agent_log import load_agent_events
+
+    events = load_agent_events(root, agent)
+    if not events:
+        return False
+    for event in reversed(events):
+        if event.get("event") != "contract_authored":
+            continue
+        if str(event.get("contract_path", "")).replace("\\", "/") != contract_suffix:
+            continue
+        if event.get("content_digest") == digest:
+            return True
+    return False
+
+
+def _valid_contract_for_payload(payload: Mapping[str, JsonValue]) -> bool:
+    root = _project_root(payload)
+    if not _is_exact_identity(payload):
+        # legacy_default 세션은 기존 경로 유지(설계 §5-1 마지막 줄).
+        return _valid_contract(root)
+    agent_key = _identity_agent_key(payload)
+    agent = payload.get("agent")
+    agent_name = agent if isinstance(agent, str) and agent else "default"
+    namespaced = namespaced_contract_path(root, agent_key)
+    if _valid_contract_at(namespaced):
+        try:
+            digest = hashlib.sha256(namespaced.read_bytes()).hexdigest()
+        except OSError:
+            digest = ""
+        # 설계 §6-5: 계약 파일 단독이 아니라 자기 감사 로그의 contract_authored 이벤트와
+        # digest가 정합해야 R1이 인정한다 — 타 identity 계약을 복사해도 이벤트가 없어 무익화.
+        suffix = _namespaced_contract_suffix(root, agent_key)
+        if digest and _contract_authored_event_matches(root, agent_name, suffix, digest):
+            return True
+    if _single_active_exact_identity(root, agent_key):
+        return _valid_contract(root)
+    return False
+
+
+def record_contract_authored_event(payload: Mapping[str, JsonValue]) -> None:
+    # PostToolUse에서 호출: 방금 쓰기가 성공한 파일이 내 identity의 namespaced 계약이면
+    # digest를 감사 로그(agents/<agent>.jsonl)에 남긴다(§6-5 이중 근거의 대응 축).
+    if not _is_exact_identity(payload):
+        return
+    root = _project_root(payload)
+    agent_key = _identity_agent_key(payload)
+    agent = payload.get("agent")
+    agent_name = agent if isinstance(agent, str) and agent else "default"
+    namespaced = namespaced_contract_path(root, agent_key)
+    namespaced_suffix = _namespaced_contract_suffix(root, agent_key)
+    paths = _string_list(payload.get("file_paths"))
+    if not any(path.replace("\\", "/").endswith(namespaced_suffix) for path in paths):
+        return
+    try:
+        digest = hashlib.sha256(namespaced.read_bytes()).hexdigest()
+    except OSError:
+        return
+    _ = record_event(
+        {
+            "project_root": root,
+            "event": "contract_authored",
+            "host": payload.get("host"),
+            "agent": agent_name,
+            "session_id": payload.get("session_id"),
+            "turn_id": payload.get("turn_id"),
+            "contract_path": namespaced_suffix,
+            "content_digest": digest,
+        }
+    )
+
+
 def _intent_set_command(payload: Mapping[str, JsonValue]) -> str:
     value = payload.get("intent_set_command")
     if isinstance(value, str) and value:
@@ -361,6 +558,10 @@ def evaluate_pretool_contract(payload: Mapping[str, JsonValue]) -> Decision:
     tool = _tool_name(payload)
     if tool not in GUARDED_TOOLS:
         return {"decision": "allow", "message": "not a guarded tool"}
+
+    friction = evaluate_state_file_friction(payload)
+    if friction["decision"] == "block":
+        return friction
 
     try:
         recover_checkpoint_gates(payload)
@@ -377,6 +578,6 @@ def evaluate_pretool_contract(payload: Mapping[str, JsonValue]) -> Decision:
     if needs_goals_block(payload) and not _is_goals_authoring(paths, command):
         return block_goals_once(payload)
 
-    if paths and all(_is_contract_authoring(path) for path in paths):
+    if tool in EDIT_TOOLS and paths and all(_is_contract_authoring(path, payload) for path in paths):
         return {"decision": "allow", "message": "contract authoring allowed"}
     return evaluate_r1_contract_with_scorecard(payload)

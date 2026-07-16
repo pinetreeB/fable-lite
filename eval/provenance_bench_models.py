@@ -51,9 +51,31 @@ class ScorecardBenchResult:
 
 
 @dataclass(frozen=True, slots=True)
+class AttributionScenarioResult:
+    path_attribution: int
+    peer_exemption: bool
+    warmups: int
+    measurements: int
+    stop: PhaseStats
+    decision_counts: dict[str, int]
+    atomic_write_count: int
+    ledger_valid: bool
+
+
+@dataclass(frozen=True, slots=True)
+class AttributionBenchResult:
+    scenarios: tuple[AttributionScenarioResult, ...]
+    budget_ms: int
+    measure_only: bool
+    passed: bool
+    failures: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class BenchResult:
     scales: tuple[ScaleResult, ...]
     slo: SloResult
     scale_slos: dict[int, SloResult]
     stress: StressResult
     scorecard: ScorecardBenchResult | None = None
+    attribution: AttributionBenchResult | None = None

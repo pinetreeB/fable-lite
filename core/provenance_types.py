@@ -4,7 +4,18 @@ from dataclasses import dataclass
 from enum import StrEnum
 from fnmatch import fnmatchcase
 from pathlib import Path
-from typing import Final, override
+from collections.abc import Mapping, Sequence
+from typing import Final, TypeAlias, override
+
+JsonInput: TypeAlias = (
+    str
+    | int
+    | float
+    | bool
+    | None
+    | Sequence["JsonInput"]
+    | Mapping[str, "JsonInput"]
+)
 
 
 DEFAULT_MAX_SCAN_ENTRIES: Final = 10_000
@@ -28,6 +39,7 @@ class ChangeOperation(StrEnum):
 
 class ProvenanceStatus(StrEnum):
     COMPLETE = "complete"
+    COMPLETE_WITH_EXCLUSIONS = "complete_with_exclusions"
     INCOMPLETE = "incomplete"
     SCOPE_TOO_LARGE = "scope_too_large"
     UNSUPPORTED = "unsupported"
@@ -43,6 +55,8 @@ class ProvenanceReason(StrEnum):
     STORE_READ_ERROR = "store_read_error"
     STORE_WRITE_ERROR = "store_write_error"
     OBSERVATION_ERROR = "observation_error"
+    PEER_ACTIVITY = "peer_activity"
+    TURN_NOT_STARTED = "turn_not_started"
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,6 +131,18 @@ class ScanIssue:
 
 
 @dataclass(frozen=True, slots=True)
+class SnapshotExclusion:
+    path: str
+    reason: str
+    peer_agent_key: str
+    peer_turn_id: str
+    invocation_id: str
+    started_seq: int
+    started_at: str
+    observer_turn_id: str
+
+
+@dataclass(frozen=True, slots=True)
 class ScanBudgetPath:
     path: str
     total_bytes: int
@@ -143,6 +169,7 @@ class Snapshot:
     snapshot_id: str
     scope_policy_id: str
     generated_patterns: tuple[str, ...]
+    exclusions: tuple[SnapshotExclusion, ...] = ()
     is_casefolded: bool = False
     platform: str = ""
     full_reconciled_at: str | None = None
@@ -172,7 +199,7 @@ class NetDelta:
 MAX_BUDGET_TOP_PATHS: Final = 3
 
 
-def normalize_budget_top_paths(value: object) -> tuple[dict[str, object], ...]:
+def normalize_budget_top_paths(value: JsonInput) -> tuple[dict[str, str | int], ...]:
     """ledger에 저장된 provenance_budget_top_paths 원시값을 검증·정규화한다.
 
     타입이 안 맞거나(비-list), 항목이 dict가 아니거나, path가 빈 문자열이거나,
@@ -180,7 +207,7 @@ def normalize_budget_top_paths(value: object) -> tuple[dict[str, object], ...]:
     """
     if not isinstance(value, (list, tuple)):
         return ()
-    normalized: list[dict[str, object]] = []
+    normalized: list[dict[str, str | int]] = []
     for item in value:
         if len(normalized) >= MAX_BUDGET_TOP_PATHS:
             break
@@ -199,5 +226,5 @@ def normalize_budget_top_paths(value: object) -> tuple[dict[str, object], ...]:
     return tuple(normalized)
 
 
-def normalize_budget_breach_path(value: object) -> str | None:
+def normalize_budget_breach_path(value: JsonInput) -> str | None:
     return value if isinstance(value, str) and value else None

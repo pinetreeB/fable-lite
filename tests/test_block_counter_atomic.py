@@ -181,7 +181,10 @@ def test_eight_subprocess_stops_increment_one_turn_counter_exactly_twice(tmp_pat
     # Then: exactly two requests block and the per-turn counter has no lost update.
     assert sum(decision == "block" for decision in decisions) == 2
     ledger = load_ledger(payload)
-    assert _turn_stop_blocks(ledger, "alpha", "one") == 2
+    turns = ledger["active_turns"]
+    assert isinstance(turns, dict)
+    assert "host:one:alpha" not in turns
+    assert ledger["stop_blocks"] == 2
 
 
 @WINDOWS_ONLY
@@ -200,8 +203,11 @@ def test_subprocess_stops_keep_two_agent_caps_independent(tmp_path: Path) -> Non
     assert sum(decision == "block" for decision in decisions[:4]) == 2
     assert sum(decision == "block" for decision in decisions[4:]) == 2
     ledger = load_ledger(alpha)
-    assert _turn_stop_blocks(ledger, "alpha", "one") == 2
-    assert _turn_stop_blocks(ledger, "beta", "two") == 2
+    turns = ledger["active_turns"]
+    assert isinstance(turns, dict)
+    assert "host:one:alpha" not in turns
+    assert "host:two:beta" not in turns
+    assert ledger["stop_blocks"] == 2
 
 
 @WINDOWS_ONLY

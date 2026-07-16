@@ -36,7 +36,7 @@ def main() -> int:
         )
         from core.adapter_observation import observe_post_tool, resolve_active_invocation, verification_covers
         from core.classify import classify_prompt
-        from core.contract import EDIT_TOOLS, SHELL_TOOLS
+        from core.contract import EDIT_TOOLS, SHELL_TOOLS, record_contract_authored_event
         from core.ledger import JsonObject, load_ledger, record_event
         from core.provenance_types import ProvenanceStatus
         from core.scope_guard import evaluate_scope
@@ -57,6 +57,21 @@ def main() -> int:
                 tool_output(payload),
             )
             invocation = resolve_active_invocation(Path(root), invocation)
+            attribution = invocation.scorecard_attribution
+            if attribution == "legacy_default" and invocation.session_id != "default":
+                attribution = "exact"
+            if family == "edit":
+                record_contract_authored_event(
+                    {
+                        "project_root": root,
+                        "file_paths": tool_file_paths(payload),
+                        "host": invocation.host,
+                        "agent": invocation.agent,
+                        "session_id": invocation.session_id,
+                        "turn_id": invocation.turn_id,
+                        "attribution": attribution,
+                    }
+                )
             observation = observe_post_tool(Path(root), invocation)
             verification_command = family == "shell" and is_verification_command(command)
             if verification_command:
@@ -75,7 +90,7 @@ def main() -> int:
                 }
                 if covers is not None:
                     verification["covers"] = covers
-                record_event(verification)
+                _ = record_event(verification)
                 return emit({"systemMessage": "[smtw] 원장: 검증 기록 / recorded verification."})
             if observation.status is ProvenanceStatus.SCOPE_TOO_LARGE:
                 return emit({})
@@ -95,7 +110,7 @@ def main() -> int:
                 }
                 )
             if scope["decision"] == "warn":
-                record_event(
+                _ = record_event(
                     {
                         "project_root": root,
                         "event": "scope_warning",

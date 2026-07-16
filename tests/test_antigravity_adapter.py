@@ -84,7 +84,10 @@ def test_oma_before_tool_uses_actual_top_level_tool_as_authority(tmp_path: Path)
     result = run_oma_hook("PreToolUse", payload)
 
     assert result["decision"] == "deny"
-    assert "contract.json" in str(result.get("reason", ""))
+    # 최상위 tool_name의 command가 판정 근거라는 것이 검증 대상이다. 이 명령은
+    # R2 파기 차단(§6-3 R2-first)이 R1보다 먼저 잡으므로 어느 게이트의 차단이든 수용한다.
+    reason = str(result.get("reason", ""))
+    assert "contract.json" in reason or "R2" in reason
 
 
 def test_oma_pre_tool_allow_uses_official_decision(tmp_path: Path) -> None:

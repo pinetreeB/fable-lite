@@ -7,7 +7,7 @@ import pytest
 
 from core.classify import classify_prompt
 from core.ledger import load_ledger, record_event
-from core.verify_state import evaluate_stop
+from core.verify_state import evaluate_stop, evaluate_without_io
 
 
 DESIGN_GATE_ENV = "FABLE_LITE_DESIGN_GATE"
@@ -223,7 +223,8 @@ def test_fresh_design_result_is_invalidated_by_later_ui_change(
     _record_ui_change(tmp_path)
     _record_design_check(tmp_path, passed=True)
     _record_general_verification(tmp_path)
-    assert evaluate_stop({"project_root": str(tmp_path)})["decision"] == "allow"
+    before = load_ledger({"project_root": str(tmp_path)})
+    assert evaluate_without_io(before, {"project_root": str(tmp_path)})["decision"] == "allow"
 
     # When: the same turn records a later UI mutation and re-verifies only ordinary behavior.
     _record_ui_change(tmp_path, "src/Panel.tsx")
