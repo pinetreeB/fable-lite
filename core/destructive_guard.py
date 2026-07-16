@@ -10,6 +10,8 @@ from typing import Final, TypeAlias
 from .ledger import JsonObject, JsonValue, load_ledger, state_dir
 from .provenance_policy import canonical_manifest_key
 
+_STATE_DIR_NAME: Final[str] = Path(state_dir(".")).name
+
 Decision: TypeAlias = dict[str, JsonValue]
 
 SHELL_TOOLS: Final[frozenset[str]] = frozenset({"Bash", "PowerShell"})
@@ -62,12 +64,6 @@ _NOISE_RE = re.compile(r"['\"\\()&$]")
 _REDIRECT_RE = re.compile(r"^(?P<operator>(?:\d*)>(?:[|&])?|&>\|?)(?P<target>.*)$")
 _APPEND_REDIRECT_RE = re.compile(r"^(?:\d*|&)>>")
 _ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
-_WINDOWS_RESERVED_NAMES: Final[frozenset[str]] = frozenset(
-    {"aux", "con", "nul", "prn"}
-    | {f"com{index}" for index in range(1, 10)}
-    | {f"lpt{index}" for index in range(1, 10)}
-)
-
 # 07-16 사고 재발 방지 3절차(설계 §6-4) — 원복 자가발급 표면을 두지 않는 대신 안내만 한다.
 RESOLUTION_PROCEDURES: Final[str] = (
     "파괴 조치는 오케스트레이터 전결입니다. 해소 절차: "
@@ -135,20 +131,20 @@ def _validate_target(target: str) -> str:
     return "ok"
 
 
+
+
 def _blocked(category: str, reason: str) -> ParsedDestructiveCommand:
     return ParsedDestructiveCommand(category, False, (), reason)
 
 
-def _parse_git_pathspec(subcommand: str, rest: list[str]) -> ParsedDestructiveCommand:
+def _parse_git_pathspec(subcommand: str, rest: list[str]) -> ParsedDestructiveCommand | None:
     positionals: list[str] = []
-    saw_separator = False
     index = 0
     while index < len(rest):
         token = rest[index]
         if token in COMMAND_SEPARATORS:
             break
         if token == "--":
-            saw_separator = True
             index += 1
             continue
         if token.startswith("--pathspec-from-file"):
@@ -158,10 +154,15 @@ def _parse_git_pathspec(subcommand: str, rest: list[str]) -> ParsedDestructiveCo
             continue
         positionals.append(token)
         index += 1
-    if subcommand == "checkout" and not saw_separator:
-        return _blocked(CATEGORY_GIT, "implicit_scope_ambiguous_checkout")
     if not positionals:
-        return _blocked(CATEGORY_GIT, "implicit_scope")
+        # `git checkout`/`git restore` 인자 없음: 대상 pathspec이 없어 특정 파일을 복원하지
+        # 않는다(checkout 단독=상태 표시). R2 대상 아님.
+        return None
+    # `--` 유무와 무관하게 위치 인자를 pathspec 대상으로 attribution 판정에 위임한다.
+    # 브랜치명(git checkout main·release/v2)은 루트에 매칭 파일이 없어 미추적으로 통과하고,
+    # 실제 파일 경로(src/app.py)는 canonical 키로 조회돼 타 에이전트 미정산 소유면 차단된다.
+    # 정적으로 브랜치명/파일명을 구분하려던 기존 로직은 release/v2 같은 슬래시 브랜치명을
+    # 오탐했다 — 판정을 attribution 조회에 넘겨 오탐을 제거한다.
     targets: list[str] = []
     for raw in positionals:
         target = _unquote(raw)
@@ -458,34 +459,41 @@ def _default_attribution_health(ledger: JsonObject) -> JsonObject:
     return attribution_health(ledger)
 
 
-def _canonicalize_target(root: str, target: str) -> str | None:
+_CANON_IN_ROOT: Final[str] = "in_root"
+_CANON_OUT_OF_ROOT: Final[str] = "out_of_root"
+_CANON_UNRESOLVABLE: Final[str] = "unresolvable"
+
+
+def _canonicalize_target(root: str, target: str) -> tuple[str, str | None]:
     # path_attribution 인덱스 키는 canonical_manifest_key 규약(Windows casefold)이다.
-    # 여기서 같은 규약을 적용하지 않으면 대소문자 차이로 lookup miss → 미추적 판정 →
-    # R2가 뚫린다(W2 통합 검토에서 실측 확인된 규약 불일치).
+    # 세 경우를 구분해 반환한다(단일 None으로 뭉치면 안 됨 — agy 적대검토 실측):
+    #   ("in_root", key)      루트 내부로 확정 → key로 attribution 조회·판정
+    #   ("out_of_root", None) 루트 밖(relative_to ValueError) → 이 프로젝트 소유 아님, R2 무관 skip
+    #   ("unresolvable", None) resolve 자체 실패(OSError: 순환 심볼릭·초장경로 등) → fail-closed 차단
+    # OSError를 out_of_root와 뭉쳐 통과시키면, 루트 안 peer 파일을 고의 예외 유발로 우회할 수
+    # 있다(High). traversal(`..`)은 resolve **후** relative_to로 판정하므로 src/../peer.py처럼
+    # 루트로 되돌아오는 경로는 여전히 in_root 키로 잡혀 차단된다.
     normalized = target.strip().strip("'\"").replace("\\", "/")
-    if _contains_parent_traversal(normalized) or _contains_windows_reserved_name(normalized):
-        return None
+    if not normalized:
+        return (_CANON_UNRESOLVABLE, None)
     candidate = Path(normalized)
     try:
         base = Path(root).resolve()
-        resolved = candidate if candidate.is_absolute() else base / normalized
-        resolved = resolved.resolve()
+        resolved = (candidate if candidate.is_absolute() else base / normalized).resolve()
+    except OSError:
+        return (_CANON_UNRESOLVABLE, None)
+    try:
         rel = str(resolved.relative_to(base)).replace("\\", "/")
-    except (OSError, ValueError):
-        return None
-    return canonical_manifest_key(rel, os.name == "nt")
+    except ValueError:
+        return (_CANON_OUT_OF_ROOT, None)
+    return (_CANON_IN_ROOT, canonical_manifest_key(rel, os.name == "nt"))
 
 
-def _contains_parent_traversal(target: str) -> bool:
-    return ".." in Path(target).parts
-
-
-def _contains_windows_reserved_name(target: str) -> bool:
-    for part in Path(target).parts:
-        stem = part.rstrip(" .").split(".", 1)[0].casefold()
-        if stem in _WINDOWS_RESERVED_NAMES:
-            return True
-    return False
+def _is_state_dir_key(canonical: str) -> bool:
+    # provenance/감사 상태 디렉토리(.fable-lite)는 어느 에이전트도 직접 파괴하면 안 된다.
+    # attribution 인덱스에 등재되지 않으므로 소유권 조회로는 안 잡힌다 → 소유권 무관 하드 차단.
+    head = canonical.split("/", 1)[0]
+    return head == canonical_manifest_key(_STATE_DIR_NAME, os.name == "nt")
 
 
 def _has_durable_corrupt_marker(root: str) -> bool:
@@ -592,9 +600,18 @@ def evaluate_r2_destructive_gate(
     caller_agent_key = _identity_agent_key(payload)
     peer_candidates = _peer_open_invocation_candidates(ledger, caller_agent_key)
     for raw_target in parsed.targets:
-        canonical = _canonicalize_target(root, raw_target)
-        if canonical is None:
+        disposition, canonical = _canonicalize_target(root, raw_target)
+        if disposition == _CANON_UNRESOLVABLE:
+            # resolve 자체가 실패한 경로(순환 심볼릭·초장경로 등): 고의 예외 유발로 루트 안
+            # peer 파일을 우회할 수 없도록 fail-closed 차단(agy 적대검토 High).
             return _block("canonicalization_unavailable")
+        if disposition == _CANON_OUT_OF_ROOT or canonical is None:
+            # 루트 밖 대상: 이 프로젝트 path_attribution에 없어 타 에이전트 미정산 변경일 수
+            # 없다 → R2 무관, 이 타겟은 건너뛴다. 다른 프로젝트/시스템 파일 보호는 비범위(§9).
+            continue
+        if _is_state_dir_key(canonical):
+            # provenance/감사 상태(.fable-lite): 소유권 무관 하드 차단(agy 적대검토 Critical).
+            return _block("state_dir_protected")
         try:
             record = lookup_path_attribution(ledger, canonical)
         except Exception:  # noqa: BLE001

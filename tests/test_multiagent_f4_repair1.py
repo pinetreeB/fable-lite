@@ -114,18 +114,19 @@ def test_state_file_friction_blocks_legacy_contract_shell_write(tmp_path: Path) 
     assert result["decision"] == "block"
 
 
-@pytest.mark.parametrize("target", ["../../outside.py", "CON", "folder/NUL.txt"])
-def test_r2_blocks_targets_that_cannot_be_canonicalized(
+@pytest.mark.parametrize("target", ["../../outside.py", "../sibling/x.py"])
+def test_r2_skips_out_of_root_targets_as_non_attributable(
     tmp_path: Path,
     target: str,
 ) -> None:
-    # Given: a target escapes the project root or uses a Windows reserved component.
+    # Given: a destructive target resolves outside the project root (parent traversal that
+    # does NOT return inside root — contrast with the in-root traversal test below).
     looked_up: list[str] = []
 
     def lookup(_ledger: JsonObject, canonical_path: str) -> None:
         looked_up.append(canonical_path)
 
-    # When: R2 attempts to canonicalize the destructive target.
+    # When: R2 evaluates the command.
     result = evaluate_r2_destructive_gate(
         {
             "project_root": str(tmp_path),
@@ -142,7 +143,115 @@ def test_r2_blocks_targets_that_cannot_be_canonicalized(
         },
     )
 
-    # Then: invalid canonicalization blocks before attribution lookup.
-    assert result["decision"] == "block"
-    assert "canonical" in str(result["reason"])
+    # Then: out-of-root paths are not in this project's path_attribution, so they are
+    # not attributable to a peer and R2 has no basis to block — the target is skipped
+    # (no attribution lookup) and the command passes. Protecting other projects/system
+    # files is out of R2's scope (design §9).
+    assert result["decision"] == "allow"
     assert looked_up == []
+
+
+def test_r2_still_blocks_traversal_that_resolves_inside_root(tmp_path: Path) -> None:
+    # Given: a traversal target (src/../peer.py) resolves back INSIDE the project root
+    # and that in-root path is owned by an unsettled peer.
+    def lookup(_ledger: JsonObject, canonical_path: str) -> JsonObject:
+        return {
+            "generation": 1,
+            "status": "exclusive",
+            "owners": [{"agent_key": "codex_cli:other:codex", "settled": False}],
+        }
+
+    # When: R2 evaluates the destructive command.
+    result = evaluate_r2_destructive_gate(
+        {
+            "project_root": str(tmp_path),
+            "tool_name": "Bash",
+            "command": "rm src/../peer.py",
+            "host": "claude_code",
+            "agent": "claude",
+            "session_id": "s1",
+        },
+        lookup_path_attribution=lookup,
+        attribution_health=lambda _ledger: {
+            "degraded": False,
+            "capacity_exceeded": False,
+        },
+    )
+
+    # Then: canonicalization happens AFTER resolve, so the traversal cannot launder an
+    # in-root peer-owned file into a skip — it is still blocked.
+    assert result["decision"] == "block"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "rm -rf .fable-lite/agents/peer.jsonl",
+        "git checkout -- .fable-lite/",
+        "rm .fable-lite/ledger.json",
+    ],
+)
+def test_r2_hard_blocks_state_dir_destruction(tmp_path: Path, command: str) -> None:
+    # Given: a destructive command targets the .fable-lite provenance/audit state dir,
+    # which is never in path_attribution (so ownership lookup would return None).
+    def lookup(_ledger: JsonObject, _canonical: str) -> None:
+        return None
+
+    result = evaluate_r2_destructive_gate(
+        {
+            "project_root": str(tmp_path),
+            "tool_name": "Bash",
+            "command": command,
+            "host": "claude_code",
+            "agent": "claude",
+            "session_id": "s1",
+        },
+        lookup_path_attribution=lookup,
+        attribution_health=lambda _l: {"degraded": False, "capacity_exceeded": False},
+    )
+
+    # Then: the state dir is hard-blocked regardless of attribution ownership (agy Critical).
+    assert result["decision"] == "block"
+    assert "state_dir" in str(result["reason"])
+
+
+def test_r2_fail_closed_when_resolve_raises_oserror(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: a target whose Path.resolve() raises OSError (circular symlink / MAX_PATH).
+    import core.destructive_guard as guard
+
+    real_resolve = Path.resolve
+
+    def fake_resolve(self: Path, *args: object, **kwargs: object) -> Path:
+        if "peer" in str(self):
+            raise OSError("simulated unresolvable path")
+        return real_resolve(self)
+
+    monkeypatch.setattr(Path, "resolve", fake_resolve)
+
+    def lookup(_ledger: JsonObject, _canonical: str) -> JsonObject:
+        return {
+            "generation": 1,
+            "status": "exclusive",
+            "owners": [{"agent_key": "codex_cli:other:codex", "settled": False}],
+        }
+
+    result = guard.evaluate_r2_destructive_gate(
+        {
+            "project_root": str(tmp_path),
+            "tool_name": "Bash",
+            "command": "rm peer.py",
+            "host": "claude_code",
+            "agent": "claude",
+            "session_id": "s1",
+        },
+        lookup_path_attribution=lookup,
+        attribution_health=lambda _l: {"degraded": False, "capacity_exceeded": False},
+    )
+
+    # Then: an unresolvable path is fail-closed, not skipped — deliberate OSError cannot
+    # launder an in-root peer file past R2 (agy High).
+    assert result["decision"] == "block"
+    assert "canonicalization_unavailable" in str(result["reason"])

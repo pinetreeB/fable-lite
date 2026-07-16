@@ -121,17 +121,49 @@ def test_r2_allows_checkout_branch_creation_flags(
 
 @pytest.mark.parametrize(
     "command",
-    ["git checkout -- .", "git checkout src/app.py"],
+    ["git checkout -- .", "git checkout -- ."],
 )
-def test_r2_keeps_checkout_path_forms_blocked(
+def test_r2_keeps_checkout_implicit_scope_blocked(
     tmp_path: Path,
     command: str,
 ) -> None:
-    # Given: checkout targets the worktree explicitly or ambiguously without a branch flag.
+    # Given: checkout targets the whole worktree (implicit scope `.`).
     # When: R2 evaluates the shell command.
     result = evaluate_r2_destructive_gate(_payload(tmp_path, command))
 
-    # Then: the existing destructive path protection remains fail-closed.
+    # Then: implicit whole-tree scope is always fail-closed regardless of attribution.
+    assert result["decision"] == "block"
+
+
+@pytest.mark.parametrize(
+    "command",
+    ["git checkout main", "git checkout release/v2", "git checkout feature/x"],
+)
+def test_r2_allows_checkout_branch_switch(tmp_path: Path, command: str) -> None:
+    # Given: checkout without `--` names a branch; the project root has no matching file.
+    # When: R2 evaluates the shell command.
+    result = evaluate_r2_destructive_gate(_payload(tmp_path, command))
+
+    # Then: the argument resolves to an untracked in-root path (no attribution owner),
+    # so branch switches pass. A real file path (git checkout src/app.py) is delegated to
+    # attribution lookup and blocks only when peer-owned — see the peer-owned test below.
+    assert result["decision"] == "allow"
+
+
+def test_r2_blocks_checkout_path_owned_by_peer(tmp_path: Path) -> None:
+    def peer_lookup(_ledger, _canonical):
+        return {
+            "generation": 1,
+            "status": "exclusive",
+            "owners": [{"agent_key": "codex_cli:other:codex", "settled": False}],
+        }
+
+    result = evaluate_r2_destructive_gate(
+        _payload(tmp_path, "git checkout src/app.py"),
+        lookup_path_attribution=peer_lookup,
+        attribution_health=lambda _l: {"degraded": False, "capacity_exceeded": False},
+    )
+    # checkout <path> restoring a peer-owned file is blocked via attribution.
     assert result["decision"] == "block"
 
 
