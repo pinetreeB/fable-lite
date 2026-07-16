@@ -6,8 +6,15 @@ from collections.abc import Iterable
 
 
 _REDIRECT = re.compile(r"(?:^|\s)(?:\d?>{1,2})\s*(?:'([^']+)'|\"([^\"]+)\"|([^\s;|&]+))")
+# 인라인 스크립트(python -c / node -e)의 상태파일 쓰기 탐지. Path('x')는 read_text()·
+# exists() 같은 읽기에도 붙으므로, 뒤에 **쓰기 메서드가 체이닝될 때만** 대상으로 잡는다
+# (읽기 오탐 제거). 변수 경유(p = Path('x'); p.write_text())는 이 정규식이 못 잡으나 그건
+# friction의 기존 한계이며 §6-5 이중 근거 교차 확인이 실질 방어다.
 _INLINE = re.compile(
-    r"(?:Path\(\s*|fs\.(?:writeFileSync|appendFileSync|rmSync|unlinkSync)\(\s*)(?:'([^']+)'|\"([^\"]+)\")"
+    r"fs\.(?:writeFileSync|appendFileSync|rmSync|unlinkSync)\(\s*(?:'([^']+)'|\"([^\"]+)\")"
+    r"|Path\(\s*(?:'([^']+)'|\"([^\"]+)\")\s*\)\s*\.\s*"
+    r"(?:write_text|write_bytes|unlink|touch|mkdir|rmdir|rename|replace|chmod"
+    r"|symlink_to|hardlink_to|open\(\s*['\"][wax])"
 )
 
 

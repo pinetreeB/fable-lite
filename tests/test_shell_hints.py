@@ -64,6 +64,30 @@ def test_inline_runtime_shell_hints_extract_write_paths() -> None:
     assert node_paths == ("dist/app.js", "tmp/*.tmp")
 
 
+def test_inline_path_reads_are_not_treated_as_write_targets() -> None:
+    # Given: inline Python only reads/inspects a path (no write method chained).
+    # Path('x') 뒤에 쓰기 메서드가 없으면 후보 경로로 추출하지 않는다 — read_text·exists
+    # 같은 읽기가 R2-friction에 걸리던 오탐 제거.
+    read_commands = (
+        "python -c \"from pathlib import Path; Path('.fable-lite/gates.jsonl').read_text()\"",
+        "python -c \"Path('.fable-lite/ledger.json').exists()\"",
+        "python -c \"print(Path('.fable-lite/x').read_bytes())\"",
+    )
+    for command in read_commands:
+        assert shell_candidate_paths(command) == (), command
+
+
+def test_inline_path_writes_remain_write_targets() -> None:
+    # Given: inline Python chains a write/delete method on Path(...).
+    write_commands = (
+        ("python -c \"Path('.fable-lite/ledger.json').write_text('x')\"", ".fable-lite/ledger.json"),
+        ("python -c \"Path('build/note.txt').write_bytes(b'x')\"", "build/note.txt"),
+        ("python -c \"Path('tmp/scratch').unlink()\"", "tmp/scratch"),
+    )
+    for command, expected in write_commands:
+        assert shell_candidate_paths(command) == (expected,), command
+
+
 def test_parser_candidates_without_a_delta_create_no_change(tmp_path: Path) -> None:
     # Given: a shell invocation advertises a target but does not alter bytes.
     lifecycle = ProvenanceLifecycle(tmp_path)
