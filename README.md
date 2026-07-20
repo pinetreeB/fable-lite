@@ -16,7 +16,7 @@ When you ask an AI (Claude, Codex…) to write code, it's capable but sometimes 
 - It picks **one guess** for a bug and fixes that (maybe the wrong spot)
 - It says "I'll do X next" and just **stops**
 
-`show-me-the-work` is an **automatic quality inspector** that sits next to the AI. When the AI tries to call something "done" without checking, it **blocks and demands evidence**. You do nothing — install once, and it works on every task.
+`show-me-the-work` is an **automatic quality inspector** that sits next to the AI. When the AI tries to call something "done" without checking, it **blocks and demands evidence**. Install the plugin once, then turn on the config in whichever projects you want supervised — it works automatically from there.
 
 > Think of it as a flexible QA supervisor assigned to a skilled-but-careless worker. Silent most of the time; it only steps in the moment someone says "done" without proof.
 
@@ -41,7 +41,7 @@ The name reverses two familiar cheat-code memes: StarCraft's `show me the money`
 **Asking in words and blocking in code are different things.** That objection is true for the first half only.
 
 - Writing "always verify before finishing" in a prompt is a **request**. The AI can ignore it — in our measurement, instruction-only compliance was **0/3**.
-- show-me-the-work is not a request; it is a **lock**. Until the condition (evidence of an actually-executed verification) is met, the "done" declaration and tool calls are **rejected at the program level**. There is no layer where the model gets to "decide not to comply" — the same measurement showed hard gates converging to **3/3** blocked-then-recovered-with-real-evidence ([experiment report](docs/reviews/p5b-n1-natural.md)).
+- show-me-the-work is not a request; it is a **lock**. Until the condition (evidence of an actually-executed verification) is met, the "done" declaration and tool calls are **rejected at the program level**. It mechanically bounces a verification-less "done" back at most twice, then — to avoid a deadlock — lets the turn through with an audit trail and warning instead of blocking forever — the same measurement showed hard gates converging to **3/3** blocked-then-recovered-with-real-evidence ([experiment report](docs/reviews/p5b-n1-natural.md)).
 
 One fun piece of evidence: while building this repository, **even a frontier model (Fable 5) got blocked by this gate and had to rewrite its report.** Hooks don't rely on the model's goodwill.
 
@@ -96,7 +96,7 @@ The qualitative gap **held across 3 repeat runs** (OFF verified 0/3, ON 3/3), th
 
 Pure-stdlib Python core (zero Claude Code imports — platform-neutral, adapters are thin wrappers), single state dir `.fable-lite/`, every hook fail-open, Windows-native.
 
-> Compatibility note: the internal state path remains `.fable-lite/` in v2.0 to avoid breaking existing installations. A public alias is planned for v2.1.
+> Compatibility note: the internal state path remains `.fable-lite/` to avoid breaking existing installations. A public alias that separates shared config from per-user runtime state is still at the design stage with no version committed yet (follow-up ADR, STATE-01).
 
 Non-document file changes require a fresh successful verification in every task mode (`quick`, `normal`, and `deep`). No change and documentation-only turns retain their existing allow behavior.
 

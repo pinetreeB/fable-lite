@@ -12,6 +12,10 @@ license = { text = "MIT" }
 authors = [{ name = "show-me-the-work team" }]
 dependencies = []
 
+[project.scripts]
+smtw = "fable_lite.cli:main"
+fable-lite = "fable_lite.cli:main"
+
 [tool.setuptools.packages.find]
 include = ["adapters*", "core*", "fable_lite*", "goals*"]
 
