@@ -8,6 +8,7 @@ import re
 from .brief import run_brief
 from .check import run_check
 from .intent import add_intent_parser
+from .quarantine import add_quarantine_parser
 from .scorecard import add_scorecard_parser
 
 _PYPROJECT_VERSION_RE = re.compile(r'^version\s*=\s*"(?P<version>[^"]+)"', re.MULTILINE)
@@ -59,6 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     add_intent_parser(subparsers)
     add_scorecard_parser(subparsers)
+    add_quarantine_parser(subparsers)
     return parser
 
 
