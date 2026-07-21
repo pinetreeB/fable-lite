@@ -538,10 +538,12 @@ def _validate_invocations(value: JsonValue, field: str) -> None:
             _required(entry, "candidate_paths", entry_field),
             f"{entry_field}.candidate_paths",
         )
-        if "status" in entry:
-            status = _string(entry["status"], f"{entry_field}.status")
-            if status not in {"open", "closed"}:
-                _reject(f"{entry_field}.status", "must be open or closed")
+        status = _string(
+            _required(entry, "status", entry_field),
+            f"{entry_field}.status",
+        )
+        if status not in {"open", "closed"}:
+            _reject(f"{entry_field}.status", "must be open or closed")
         if "started_seq" in entry:
             _nonnegative_integer(
                 entry["started_seq"],

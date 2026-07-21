@@ -68,11 +68,15 @@ event 계약으로 정규화됩니다. 상태는 대상 프로젝트의 `.fable-
 - 정상 turn start와 변경 없는 PostTool은 콘텐츠를 읽지 않는 metadata fast-path를 사용합니다.
 - Stop은 parser가 모르는 shell write도 잡도록 전체 콘텐츠를 reconcile합니다.
 - scan이 불완전하면 clean으로 간주하지 않고 기존 2회 차단 상한을 적용합니다.
-- v1 ledger 자동 migration은 W9 정확도 receipt와 W10 성능 receipt가 모두 green일 때만 켜집니다.
+- v1 ledger 및 `status` 없는 구 v2 invocation의 자동 migration은 `FABLE_LITE_AUTO_MIGRATION=1`로 명시적으로 opt-in하고 W9 정확도 receipt와 W10 성능 receipt가 모두 green일 때만 켜집니다.
 
 패키지에 포함된 `core/release_receipts/bench-latest.json`은 rev3의 1k 대표 규모와 10k 극한 규모 hard
-gate가 모두 green입니다. 함께 패키징된 W9 정확도 receipt도 green이므로 one-shot v1 ledger 자동
-migration이 활성화됩니다. `eval/results/`의 ignored 재측정 산출물은 release 승인을 자동 갱신하지
+gate가 모두 green입니다. 함께 패키징된 W9 정확도 receipt도 green이므로 환경 opt-in을 설정한
+프로세스에서 one-shot migration을 사용할 수 있습니다. opt-in이 없으면 구 v2 invocation 원장은
+원본 바이트를 보존한 채 attribution-degraded로 동작합니다. opt-in 상태에서도 status-less invocation은
+30분 lease를 초과한 경우에만 `closed`가 되고, 최근 행은 `open`으로 보존됩니다. R2 보호 증거가
+불완전하거나 migration이 실패하면 원본을 쓰지 않고 degraded를 유지하며 `core.ledger` warning에
+실패 stage/detail을 출력합니다. `eval/results/`의 ignored 재측정 산출물은 release 승인을 자동 갱신하지
 않습니다. packaged receipt를 수동으로 수정해 가드를 우회하면 안 됩니다. 재측정은 저장소 루트에서 다음
 명령으로 실행합니다.
 

@@ -16,6 +16,7 @@ Stabilization sweep closing the external audit (`docs/reviews/2026-07-20-sol-sta
 - **HINT-01**: inline Python write-friction detects `Path.rename/replace` destinations and `open` update/binary write modes while leaving read forms unflagged.
 - **NEW-02**: `parse_unable_*` fail-closed reasons are mapped in `R2_COORDINATION_REASON_MAP`, so dynamic-command denials (e.g. PowerShell `$var` idioms) are labeled accurately instead of `unresolvable_target` — diagnostic only, gate decision unchanged.
 - **Multi-agent goals (B4)**: `goals.py` checkpoints are namespaced per session identity (`goals/<identity>.json`), preventing worker overwrite of the orchestrator's goals; N2 gate checks the active identity; single-identity sessions stay compatible via legacy fallback + on-write migration.
+- **Invocation status hardening (B5)**: `invocations.status` is required again at the v2 schema boundary. Explicitly opted-in auto migration closes only omissions proven older than the invocation lease and preserves recent, fully evidenced peer windows as `open`; unclassifiable rows remain unchanged/degraded. Immutable archive and atomic validation remain intact, and ON-but-failing migration now emits stage/detail diagnostics instead of looking identical to OFF mode.
 
 ### Changed
 

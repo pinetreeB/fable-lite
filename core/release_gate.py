@@ -1,19 +1,37 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Final
 
 from .ledger_schema import JsonObject, JsonValue
 
 DEFAULT_RECEIPTS_DIR: Final = Path(__file__).resolve().parent / "release_receipts"
+AUTO_MIGRATION_ENV: Final = "FABLE_LITE_AUTO_MIGRATION"
 
 
 def auto_migration_enabled(receipts_dir: Path | None = None) -> bool:
+    """Ledger v1->v2 schema migration gate (unlocked in v2.0.0).
+
+    Enabled whenever the packaged release receipts prove green — deliberately
+    env-independent so a clean wheel install keeps schema migration on. Do NOT
+    gate the opt-in invocation-status backfill on this; use
+    ``status_backfill_enabled()`` for that.
+    """
     directory = DEFAULT_RECEIPTS_DIR if receipts_dir is None else receipts_dir
     return _provenance_green(_load(directory / "provenance-latest.json")) and _benchmark_green(
         _load(directory / "bench-latest.json")
     )
+
+
+def status_backfill_enabled() -> bool:
+    """Opt-in gate for backfilling missing invocation statuses on legacy ledgers.
+
+    Distinct from schema migration: this touches live ledgers and must stay off
+    unless the operator explicitly sets ``FABLE_LITE_AUTO_MIGRATION=1``.
+    """
+    return os.environ.get(AUTO_MIGRATION_ENV) == "1"
 
 
 def _load(path: Path) -> JsonObject | None:
