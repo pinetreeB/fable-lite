@@ -2,9 +2,29 @@
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-07-22 — internal unification (`.fable-lite` → `.smtw`)
+
+Internal identifier unification kept deferred at the v2.0 rebrand. Design of record: `docs/design/smtw-unification-v3.md` (3-AI). P4 summary: `docs/reviews/2026-07-22-smtw-unification-v3-p4.md`. Existing (unmigrated) projects keep running unchanged on the legacy tree — this release adds an explicit `smtw migrate` path and reads both generations; nothing auto-migrates.
+
 ### Added
 
+- **State layout & explicit migration (Q1)**: `core/state_layout.py` gives a side-effect-free layout verdict (`EMPTY`/`LEGACY`/`NATIVE`/`MIGRATED`/`MIGRATING`/`CONFLICT`); `core/state_migration.py` + `smtw migrate` perform an **explicit** copy→verify→publish migration (isolated staging copy, pre/post source manifest comparison, atomic marker, `rename`-into-absent-target publish). Invariants: exactly one authoritative tree per project, `state_dir()` never writes, no per-file legacy fallback, no silent fallback after publish. Migration **defers** when the legacy tree has an active turn or open invocation (requires session restart); `.fable-lite/config.json` intentionally stays in the legacy location for config-fallback lifetime.
+- **Runtime env unification (Q3)**: `core/runtime_env.py` resolves eight semantic keys with `SMTW_` canonical and `FABLE_LITE_` as a read alias by **presence, not truthiness**. Both generations present with differing values is a **fail-closed** `SmtwEnvConflictError` (blocks silent gate-weakening via the legacy name); adapters convert it to `permissionDecision: deny` (PreToolUse) / `decision: block` (other events) rather than absorbing it into health fail-open.
+- **Project config unification (Q4)**: precedence `.smtw.toml` > `pyproject.toml` `[tool.smtw]` > `.fable-lite/config.json`, each source resolving to `ABSENT` / `VALID` / `DECLARED_INVALID`. Only an unparseable TOML is corrupt; a missing `[tool.smtw]` section is `ABSENT` and falls through (a removed section cannot DoS supervision into fail-closed). A malformed-pyproject header probe skips comments/strings/`[tool.smtw.fake]`.
 - **Blocked-artifact quarantine (B1)**: when R2 blocks a destructive command, the command is backed up to `.fable-lite/quarantine/` as a best-effort side effect so a worker's shell-written artifact is not lost — R2's block decision and reason code are unchanged (a backup failure never flips block to allow). `smtw quarantine list/show/clear` lets the orchestrator review and recover; there is no `apply` (auto-apply is out of scope). Backups are traversal-safe (sanitized agent key, three CLI path guards), live inside the R2-protected state dir, and are bounded by count/size/age GC.
+
+### Changed
+
+- **Consumer SSOT**: every state consumer (ledger, attribution/snapshot, contract/goals/intent, scorecard/coordination/audit, adapter runtime log) now takes the single tree from `state_dir()`; a regression test forbids direct `.fable-lite` literals outside `core/state_layout.py`.
+- **R2 / provenance dual protection**: destructive-guard and provenance-exclude protect `.smtw`, the preserved legacy `.fable-lite`, and migration staging/lock by both lexical and resolved path, so a leftover legacy tree is never left unguarded.
+
+### Known Limitations
+
+- **Content-matched marker forgery**: an attacker who already bypasses R2 (arbitrary code execution) can plant a `.smtw` whose marker digest/count/bytes exactly match the legacy tree and have it accepted as authoritative. This causes no data loss (content is identical to legacy) and cannot launder history (a mismatched digest is rejected as `CONFLICT`); a local marker signature adds no trust because the same ACE could rewrite the live target directly, and forcing legacy presence would violate the no-fallback-after-publish invariant. Runtime full-tree rehashing was rejected as prohibitively expensive. Verdict Low / no fix (codex·agy·orchestrator concur).
+
+### Compatibility / migration
+
+- Legacy read paths (`.fable-lite/` whole-tree mode, `FABLE_LITE_*` env aliases, `.fable-lite/config.json` lowest-precedence fallback) remain through v3.x and are removed no earlier than v4, with `smtw doctor` surfacing the active layout/config/env source. **Python module rename `fable_lite` → `smtw` (Q2) is deliberately deferred** to a later minor with a compatibility shim.
 
 ## [2.4.1] - 2026-07-21
 

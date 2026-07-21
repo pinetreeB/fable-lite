@@ -1,6 +1,6 @@
 {
   "name": "show-me-the-work",
-  "version": "2.4.1",
+  "version": "3.0.0",
   "description": "Evidence-based AI work supervision for Claude Code: show the executed verification before claiming completion.",
   "author": {
     "name": "show-me-the-work team"

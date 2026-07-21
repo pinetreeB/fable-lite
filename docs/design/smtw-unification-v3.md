@@ -1,7 +1,7 @@
 # smtw 내부 통일 마이그레이션 — 설계 확정 (v3.0)
 
 > 2026-07-21 좌상 종합. 입력: codex 의견서(구현·마이그레이션 실현성, tmp/smtw-unification-codex.md) + agy 적대검토(데이터 안전·게이밍, tmp/smtw-unification-agy.md) + 좌상 종합.
-> Status: **설계 확정, 구현 방향승인 대기**. 규모 v3.0 major(Q1만 1,200~2,000 LOC).
+> Status: **구현 완료 (2026-07-22, 브랜치 `worker/v3-unification` 커밋 6, v3.0.0)**. Q1(디렉토리)·Consumer SSOT·Q3(env)·Q4(config) 반영. **Q2(모듈명)은 확정대로 후속 minor+shim으로 이월**. P4 종합=`docs/reviews/2026-07-22-smtw-unification-v3-p4.md`. 규모 v3.0 major.
 
 ## 핵심 판정: codex (c)와 agy (b)는 합쳐진다
 

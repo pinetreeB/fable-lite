@@ -2,7 +2,7 @@
 
 **show-me-the-work** (`smtw`, Korean: **쇼미더워크**) is evidence-based AI work supervision: no executed proof, no credible "done."
 
-[![version](https://img.shields.io/badge/version-2.4.1-brightgreen.svg)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-3.0.0-brightgreen.svg)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 > 🇰🇷 **한국어가 1차 문서입니다**: [`README.ko.md`](README.ko.md)
