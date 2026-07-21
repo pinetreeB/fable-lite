@@ -5,16 +5,17 @@ from datetime import date
 from fnmatch import fnmatchcase
 import hashlib
 import json
-import os
 from pathlib import Path
 import re
 import subprocess
 from typing import Final, TypeAlias, cast
 
+from .runtime_env import DESIGN_GATE, canonical_env_key, smtw_env
+
 
 JsonScalar: TypeAlias = str | int | bool | None
 JsonValue: TypeAlias = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
-DESIGN_GATE_ENV: Final = "FABLE_LITE_DESIGN_GATE"
+DESIGN_GATE_ENV: Final = canonical_env_key(DESIGN_GATE)
 DESIGN_CONFIG_PATH: Final = Path("design/gate.config")
 UI_EXTENSIONS: Final = frozenset(
     {".css", ".scss", ".sass", ".less", ".html", ".htm", ".js", ".jsx", ".ts", ".tsx", ".vue", ".svelte", ".svg"}
@@ -69,7 +70,7 @@ def design_gate_enabled(root: Path) -> bool:
     config = load_design_gate_config(root)
     if config.present:
         return config.enabled is True
-    return os.environ.get(DESIGN_GATE_ENV) == "1"
+    return smtw_env(DESIGN_GATE) == "1"
 
 
 def design_domain(prompt: str, requested_paths: list[str]) -> str:

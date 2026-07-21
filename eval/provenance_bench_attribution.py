@@ -10,6 +10,7 @@ from unittest.mock import patch
 from core.ledger import JsonObject, load_ledger, save_ledger
 from core.ledger_storage import atomic_write_text
 from core.ledger_v2 import apply_v2_event, default_v2_ledger
+from core.runtime_env import SCORECARD, canonical_env_key
 from core.verify_state import evaluate_stop
 
 from .provenance_bench_metrics import PhaseMeasurement, summarize_phase
@@ -65,7 +66,11 @@ def _run_scenario(
         if not save_ledger(payload, template):
             raise OSError(f"failed to restore benchmark ledger: {scenario_root}")
         with (
-            patch.dict(os.environ, {"FABLE_LITE_SCORECARD": "0"}, clear=False),
+            patch.dict(
+                os.environ,
+                {canonical_env_key(SCORECARD): "0"},
+                clear=False,
+            ),
             patch("core.ledger.atomic_write_text", wraps=atomic_write_text) as atomic_write,
         ):
             started = time.perf_counter_ns()

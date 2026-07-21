@@ -34,7 +34,7 @@ python3 "/path/to/show-me-the-work/adapters/codex_cli/install.py" --target "/pat
 ```
 
 설치기는 자신의 `install.py` 위치에서 show-me-the-work 저장소 루트를 찾고, 원본 `hooks.json`의
-`{FABLE_LITE_ROOT}` 토큰 8개(4개 이벤트의 `command`/`commandWindows`)를 검증한 뒤
+`{SMTW_ROOT}` 토큰 8개(4개 이벤트의 `command`/`commandWindows`)를 검증한 뒤
 플랫폼별로 안전하게 인용한 절대 명령을 구조적으로 렌더링해 대상의 `.codex/hooks.json`만
 새로 만듭니다. 따라서 Codex를 대상 프로젝트에서 실행해도 현재 작업 디렉터리나
 `PYTHONPATH`에 의존하지 않습니다. 원본 `hooks.json`은 설치용 템플릿이므로 대상에 직접
@@ -44,9 +44,13 @@ python3 "/path/to/show-me-the-work/adapters/codex_cli/install.py" --target "/pat
 않습니다. `[features] hooks = true` 활성화가 필요한 환경에서는 기존 Codex 설정에서
 사용자가 별도로 관리해야 합니다.
 
-대상 `.codex/hooks.json`이 이미 있으면 내용을 보존한 채 오류로 종료합니다. 업데이트가
-필요하면 기존 훅을 먼저 검토·백업한 뒤 사용자가 명시적으로 정리하고 설치기를 다시
-실행하세요. 설치기가 기존 훅을 자동 병합하거나 덮어쓰지는 않습니다.
+대상 `.codex/hooks.json`이 이미 있으면 기본 설치는 내용을 보존한 채 오류로 종료합니다.
+기존 manifest 안의 foreign entry를 유지하면서 smtw가 소유한 4개 entry만 원자적으로
+갱신하려면 검토·백업 후 `--upgrade`를 명시합니다.
+
+```powershell
+python "C:\경로\show-me-the-work\adapters\codex_cli\install.py" --target "C:\경로\대상 프로젝트" --upgrade
+```
 
 Codex CLI에서 `/hooks`를 열어 새 hook을 검토하고 trust 처리합니다. 자동화 검증에서만 다음처럼 trust 검토를 우회할 수 있습니다.
 
@@ -68,7 +72,7 @@ event 계약으로 정규화됩니다. 상태는 대상 프로젝트의 `.fable-
 - 정상 turn start와 변경 없는 PostTool은 콘텐츠를 읽지 않는 metadata fast-path를 사용합니다.
 - Stop은 parser가 모르는 shell write도 잡도록 전체 콘텐츠를 reconcile합니다.
 - scan이 불완전하면 clean으로 간주하지 않고 기존 2회 차단 상한을 적용합니다.
-- v1 ledger 및 `status` 없는 구 v2 invocation의 자동 migration은 `FABLE_LITE_AUTO_MIGRATION=1`로 명시적으로 opt-in하고 W9 정확도 receipt와 W10 성능 receipt가 모두 green일 때만 켜집니다.
+- v1 ledger 및 `status` 없는 구 v2 invocation의 자동 migration은 `SMTW_AUTO_MIGRATION=1`로 명시적으로 opt-in하고 W9 정확도 receipt와 W10 성능 receipt가 모두 green일 때만 켜집니다. v3에서는 `FABLE_LITE_AUTO_MIGRATION`도 legacy alias로 읽지만 두 세대 값이 다르면 충돌 오류로 중단합니다.
 
 패키지에 포함된 `core/release_receipts/bench-latest.json`은 rev3의 1k 대표 규모와 10k 극한 규모 hard
 gate가 모두 green입니다. 함께 패키징된 W9 정확도 receipt도 green이므로 환경 opt-in을 설정한

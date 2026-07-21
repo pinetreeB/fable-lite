@@ -26,22 +26,25 @@ Codex CLI의 정상적인 Stop 허용 직후, **현재 Codex 세션이 남긴 MC
 활성화하려면 다음처럼 환경변수를 설정합니다.
 
 ```powershell
-$env:FABLE_LITE_CODEX_REAPER = '1'
-$env:FABLE_LITE_CODEX_REAPER_LOG = Join-Path $PWD '.fable-lite\codex-process-reaper.log'
+$env:SMTW_CODEX_REAPER = '1'
+$env:SMTW_CODEX_REAPER_LOG = Join-Path $PWD '.smtw\codex-process-reaper.log'
 codex
 ```
 
-`FABLE_LITE_CODEX_REAPER_LOG`를 생략하면 현재 프로젝트의
-`.fable-lite/codex-process-reaper.log`를 사용합니다. JSON Lines 로그의 `before`, `protected`,
+`SMTW_CODEX_REAPER_LOG`를 생략하면 현재 프로젝트에서 layout facade가 선택한 상태 트리의
+`codex-process-reaper.log`를 사용합니다. JSON Lines 로그의 `before`, `protected`,
 `targets`, `after`, `outside_before`, `outside_after`로 회수와 다른 세션 무손상을 확인할 수
 있습니다.
+
+v3에서는 같은 suffix의 `FABLE_LITE_*` 변수도 legacy alias로 읽습니다. canonical과 legacy
+키가 동시에 존재하면서 값이 다르면 리퍼를 실행하지 않고 충돌 오류로 중단합니다.
 
 프로젝트 하나에만 고정하려면 설치된 프로젝트 로컬 `.codex/hooks.json`의 기존 Stop
 `commandWindows` 앞부분에 다음 환경변수 대입을 추가한 뒤 원래 `stop.py` 명령을 그대로
 이어 실행합니다.
 
 ```powershell
-$env:FABLE_LITE_CODEX_REAPER='1'; $env:FABLE_LITE_CODEX_REAPER_LOG=(Join-Path (Get-Location) '.fable-lite\codex-process-reaper.log'); & <기존 python> <기존 stop.py>
+$env:SMTW_CODEX_REAPER='1'; $env:SMTW_CODEX_REAPER_LOG=(Join-Path (Get-Location) '.smtw\codex-process-reaper.log'); & <기존 python> <기존 stop.py>
 ```
 
 기존 Stop 항목을 두 개의 병렬 훅으로 나누지 마세요. 리퍼가 gate block 전에 실행될 수 있어
@@ -52,8 +55,8 @@ $env:FABLE_LITE_CODEX_REAPER='1'; $env:FABLE_LITE_CODEX_REAPER_LOG=(Join-Path (G
 셸 단위 활성화는 Codex를 종료한 뒤 다음처럼 제거합니다.
 
 ```powershell
-Remove-Item Env:FABLE_LITE_CODEX_REAPER -ErrorAction SilentlyContinue
-Remove-Item Env:FABLE_LITE_CODEX_REAPER_LOG -ErrorAction SilentlyContinue
+Remove-Item Env:SMTW_CODEX_REAPER -ErrorAction SilentlyContinue
+Remove-Item Env:SMTW_CODEX_REAPER_LOG -ErrorAction SilentlyContinue
 ```
 
 프로젝트 로컬 활성화는 `.codex/hooks.json`에서 위 환경변수 대입 부분만 제거합니다. 변수 값이
@@ -77,7 +80,7 @@ Get-Content .fable-lite\codex-process-reaper.log -Tail 1
 필요하면 실제 종료 없이 판정과 before/after 조회만 수행할 수 있습니다.
 
 ```powershell
-$env:FABLE_LITE_CODEX_REAPER_DRY_RUN = '1'
+$env:SMTW_CODEX_REAPER_DRY_RUN = '1'
 ```
 
-검증 후 `FABLE_LITE_CODEX_REAPER_DRY_RUN`을 제거하면 실제 회수가 다시 활성화됩니다.
+검증 후 `SMTW_CODEX_REAPER_DRY_RUN`을 제거하면 실제 회수가 다시 활성화됩니다.

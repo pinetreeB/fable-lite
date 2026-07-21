@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-import os
 from typing import TypeAlias
 
 from .agent_log import append_agent_event, ledger_transaction
@@ -38,11 +37,12 @@ from .state_layout import (
     PROVENANCE_CONFIG_NAME,
     state_dir,
 )
+from .runtime_env import SCORECARD, canonical_env_key, smtw_env
 
 Decision: TypeAlias = dict[str, JsonValue]
 
 MAX_STOP_BLOCKS = 2
-SCORECARD_ENV = "FABLE_LITE_SCORECARD"
+SCORECARD_ENV = canonical_env_key(SCORECARD)
 
 
 def _as_str_list(value: JsonValue | None) -> list[str]:
@@ -490,7 +490,7 @@ def _with_scorecard_line(
     ledger: Mapping[str, JsonValue],
     payload: Mapping[str, JsonValue],
 ) -> Decision:
-    if decision.get("decision") != "allow" or os.environ.get(SCORECARD_ENV) == "0":
+    if decision.get("decision") != "allow" or smtw_env(SCORECARD) == "0":
         return decision
     try:
         summary = cached_session_summary(ledger, payload)

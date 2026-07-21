@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Final
 
 from .ledger_schema import JsonObject, JsonValue
+from .runtime_env import AUTO_MIGRATION, canonical_env_key, smtw_env
 
 DEFAULT_RECEIPTS_DIR: Final = Path(__file__).resolve().parent / "release_receipts"
-AUTO_MIGRATION_ENV: Final = "FABLE_LITE_AUTO_MIGRATION"
+AUTO_MIGRATION_ENV: Final = canonical_env_key(AUTO_MIGRATION)
 
 
 def auto_migration_enabled(receipts_dir: Path | None = None) -> bool:
@@ -29,9 +29,10 @@ def status_backfill_enabled() -> bool:
     """Opt-in gate for backfilling missing invocation statuses on legacy ledgers.
 
     Distinct from schema migration: this touches live ledgers and must stay off
-    unless the operator explicitly sets ``FABLE_LITE_AUTO_MIGRATION=1``.
+    unless the operator explicitly sets ``SMTW_AUTO_MIGRATION=1`` (the v3
+    legacy alias is resolved by :mod:`core.runtime_env`).
     """
-    return os.environ.get(AUTO_MIGRATION_ENV) == "1"
+    return smtw_env(AUTO_MIGRATION) == "1"
 
 
 def _load(path: Path) -> JsonObject | None:

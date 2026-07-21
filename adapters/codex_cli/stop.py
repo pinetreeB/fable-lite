@@ -9,8 +9,8 @@ import sys
 from typing import Final
 
 
-REAPER_ENABLE_ENV: Final = "FABLE_LITE_CODEX_REAPER"
-REAPER_LOG_ENV: Final = "FABLE_LITE_CODEX_REAPER_LOG"
+REAPER_ENABLE_ENV: Final = "SMTW_CODEX_REAPER"
+REAPER_LOG_ENV: Final = "SMTW_CODEX_REAPER_LOG"
 REAPER_TRUE_VALUES: Final = frozenset({"1", "true", "yes", "on"})
 REAPER_TIMEOUT_SECONDS: Final = 8
 
@@ -47,12 +47,30 @@ def _append_reaper_launcher_error(
 def _run_process_reaper(repo_root: Path, project_root: str) -> None:
     if os.name != "nt":
         return
-    if (
-        os.environ.get(REAPER_ENABLE_ENV, "").strip().casefold()
-        not in REAPER_TRUE_VALUES
-    ):
+    from core.runtime_env import (
+        CODEX_REAPER,
+        CODEX_REAPER_DRY_RUN,
+        CODEX_REAPER_LOG,
+        CODEX_REAPER_POWERSHELL,
+        canonical_env_key,
+        legacy_env_key,
+        resolve_smtw_env,
+    )
+
+    suffixes = (
+        CODEX_REAPER,
+        CODEX_REAPER_LOG,
+        CODEX_REAPER_DRY_RUN,
+        CODEX_REAPER_POWERSHELL,
+    )
+    resolved = {
+        suffix: resolve_smtw_env(suffix)
+        for suffix in suffixes
+    }
+    enabled = resolved[CODEX_REAPER].value
+    if enabled is None or enabled.strip().casefold() not in REAPER_TRUE_VALUES:
         return
-    configured_log = os.environ.get(REAPER_LOG_ENV)
+    configured_log = resolved[CODEX_REAPER_LOG].value
     if configured_log is not None:
         log_path = Path(configured_log)
     else:
@@ -60,7 +78,13 @@ def _run_process_reaper(repo_root: Path, project_root: str) -> None:
 
         log_path = state_dir(project_root) / "codex-process-reaper.log"
     env = os.environ.copy()
-    env[REAPER_LOG_ENV] = str(log_path)
+    for suffix, value in resolved.items():
+        canonical_key = canonical_env_key(suffix)
+        env.pop(canonical_key, None)
+        env.pop(legacy_env_key(suffix), None)
+        if value.value is not None:
+            env[canonical_key] = value.value
+    env[canonical_env_key(CODEX_REAPER_LOG)] = str(log_path)
     try:
         completed = subprocess.run(
             [sys.executable, "-m", "contrib.codex_process_reaper.reaper"],

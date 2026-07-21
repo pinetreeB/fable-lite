@@ -16,6 +16,7 @@ from core.ledger import load_ledger, record_event, save_ledger
 from core.ledger_schema import JsonObject
 from core.scorecard import GateAction, ReasonCode
 from core.scorecard_store import new_transition, record_gate_transition_locked
+from core.runtime_env import SCORECARD, canonical_env_key
 
 from .provenance_bench_metrics import (
     PhaseMeasurement,
@@ -28,7 +29,7 @@ from .provenance_bench_models import ScorecardBenchResult
 
 WARMUPS = 5
 MEASUREMENTS = 30
-SCORECARD_ENV = "FABLE_LITE_SCORECARD"
+SCORECARD_ENV = canonical_env_key(SCORECARD)
 
 
 def run_scorecard_benchmark(root: Path) -> ScorecardBenchResult:

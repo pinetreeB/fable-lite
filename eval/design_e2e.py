@@ -3,7 +3,7 @@
    그대로(user_prompt_submit / post_tool_use / pre_tool_use / stop) 실행한다. eval/e2e_smoke.py
    와 동일한 `run_hook(subprocess+CC 스키마)` 방식을 따른다.
 
-   토글 ON = 프로젝트 `design/gate.config`의 `enabled: true` 또는 환경변수 `FABLE_LITE_DESIGN_GATE=1`.
+   토글 ON = 프로젝트 `design/gate.config`의 `enabled: true` 또는 환경변수 `SMTW_DESIGN_GATE=1`.
    시나리오(ON, config 기반 발동 흐름):
      S1  UI 프롬프트(.css)        → classify domain=UI → ledger.design_required=true + design-review 팩
      S2  UI 파일 raw-hex Write    → PostToolUse provenance 관측 → ledger.design_touched=true
@@ -46,11 +46,13 @@ if callable(reconfigure):
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ADAPT = ROOT / "adapters" / "claude_code"
-DESIGN_ENV = "FABLE_LITE_DESIGN_GATE"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from core.ledger_storage import ledger_path  # noqa: E402
+from core.runtime_env import DESIGN_GATE, canonical_env_key  # noqa: E402
+
+DESIGN_ENV = canonical_env_key(DESIGN_GATE)
 
 JsonScalar: TypeAlias = str | int | bool | None
 JsonValue: TypeAlias = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
@@ -330,7 +332,7 @@ def scenario_toggles() -> None:
         init_repo(proj)
         run_hook("user_prompt_submit.py",
                  {"hook_event_name": "UserPromptSubmit", "cwd": proj, "prompt": UI_PROMPT},
-                 cwd=proj, design_on=True)  # FABLE_LITE_DESIGN_GATE=1
+                 cwd=proj, design_on=True)  # SMTW_DESIGN_GATE=1
         led = ledger_of(proj)
         check("S6 env-only ON → design_required", led.get("design_required") is True,
               f"(design_required={led.get('design_required')})")

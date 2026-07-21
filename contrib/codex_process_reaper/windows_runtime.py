@@ -8,10 +8,16 @@ import os
 import subprocess
 from typing import Final, override
 
+from core.runtime_env import (
+    CODEX_REAPER_POWERSHELL,
+    canonical_env_key,
+    smtw_env,
+)
+
 from .decision import MCP_COMMAND_RE, ProcessRecord
 
 
-POWERSHELL_ENV: Final = "FABLE_LITE_CODEX_REAPER_POWERSHELL"
+POWERSHELL_ENV: Final = canonical_env_key(CODEX_REAPER_POWERSHELL)
 DEFAULT_POWERSHELL: Final = "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
 SNAPSHOT_TIMEOUT_SECONDS: Final = 6
 TASKKILL_TIMEOUT_SECONDS: Final = 6
@@ -130,7 +136,12 @@ def _snapshot_command(hook_pid: int) -> str:
 
 
 def snapshot_processes(hook_pid: int) -> ProcessSnapshot:
-    powershell = os.environ.get(POWERSHELL_ENV, DEFAULT_POWERSHELL)
+    configured_powershell = smtw_env(CODEX_REAPER_POWERSHELL)
+    powershell = (
+        DEFAULT_POWERSHELL
+        if configured_powershell is None
+        else configured_powershell
+    )
     try:
         completed = subprocess.run(
             [

@@ -13,11 +13,16 @@ import time
 
 from . import file_lock as _file_lock
 from .ledger_schema import JsonObject, JsonValue
+from .runtime_env import (
+    TEST_LOCK_WAIT_SECONDS,
+    canonical_env_key,
+    smtw_env,
+)
 from .state_layout import state_dir
 
 LOCK_WAIT_SECONDS = 15.0
 STALE_LOCK_SECONDS = _file_lock.STALE_LOCK_SECONDS
-TEST_LOCK_WAIT_ENV = "FABLE_LITE_TEST_LOCK_WAIT_SECONDS"
+TEST_LOCK_WAIT_ENV = canonical_env_key(TEST_LOCK_WAIT_SECONDS)
 
 # Keep the long-standing private names available for compatibility while the lock
 # implementation itself lives in core.file_lock.
@@ -113,7 +118,7 @@ def ledger_transaction(
 
 
 def _lock_wait_seconds() -> float:
-    test_value = os.environ.get(TEST_LOCK_WAIT_ENV)
+    test_value = smtw_env(TEST_LOCK_WAIT_SECONDS)
     if test_value is None:
         return LOCK_WAIT_SECONDS
     try:

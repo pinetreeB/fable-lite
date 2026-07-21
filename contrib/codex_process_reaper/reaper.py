@@ -8,6 +8,13 @@ from pathlib import Path
 import time
 from typing import Final, TypeAlias
 
+from core.runtime_env import (
+    CODEX_REAPER,
+    CODEX_REAPER_DRY_RUN,
+    CODEX_REAPER_LOG,
+    canonical_env_key,
+    smtw_env,
+)
 from core.state_layout import state_dir
 
 from .decision import ReapDecision, select_reap_decision
@@ -18,9 +25,9 @@ from .windows_runtime import (
 )
 
 
-ENABLE_ENV: Final = "FABLE_LITE_CODEX_REAPER"
-LOG_ENV: Final = "FABLE_LITE_CODEX_REAPER_LOG"
-DRY_RUN_ENV: Final = "FABLE_LITE_CODEX_REAPER_DRY_RUN"
+ENABLE_ENV: Final = canonical_env_key(CODEX_REAPER)
+LOG_ENV: Final = canonical_env_key(CODEX_REAPER_LOG)
+DRY_RUN_ENV: Final = canonical_env_key(CODEX_REAPER_DRY_RUN)
 TRUE_VALUES: Final = frozenset({"1", "true", "yes", "on"})
 LogValue: TypeAlias = str | int | bool | None | list[int]
 
@@ -36,12 +43,13 @@ class ReaperRun:
     elapsed_ms: int
 
 
-def _enabled(name: str) -> bool:
-    return os.environ.get(name, "").strip().casefold() in TRUE_VALUES
+def _enabled(suffix: str) -> bool:
+    value = smtw_env(suffix)
+    return value is not None and value.strip().casefold() in TRUE_VALUES
 
 
 def _log_path() -> Path:
-    configured = os.environ.get(LOG_ENV)
+    configured = smtw_env(CODEX_REAPER_LOG)
     return (
         Path(configured)
         if configured
@@ -70,7 +78,7 @@ def run_reaper() -> ReaperRun:
     started = time.monotonic()
     before = snapshot_processes(os.getpid())
     decision = select_reap_decision(before.records, hook_pid=os.getpid())
-    dry_run = _enabled(DRY_RUN_ENV)
+    dry_run = _enabled(CODEX_REAPER_DRY_RUN)
     taskkill_succeeded = True
     if decision.session_pid is not None and decision.termination_pids and not dry_run:
         taskkill_succeeded = terminate_process_trees(decision.termination_pids)
@@ -120,7 +128,7 @@ def _log_run(result: ReaperRun) -> None:
 
 
 def main() -> int:
-    if not _enabled(ENABLE_ENV):
+    if not _enabled(CODEX_REAPER):
         return 0
     if os.name != "nt":
         _append_log({"status": "skipped", "reason": "windows_only"})

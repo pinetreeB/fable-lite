@@ -5,8 +5,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"{FABLE_LITE_ROOT}/adapters/codex_cli/user_prompt_submit.py\"",
-            "commandWindows": "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"python '{FABLE_LITE_ROOT}/adapters/codex_cli/user_prompt_submit.py'\"",
+            "command": "python3 \"{SMTW_ROOT}/adapters/codex_cli/user_prompt_submit.py\"",
+            "commandWindows": "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"python '{SMTW_ROOT}/adapters/codex_cli/user_prompt_submit.py'\"",
             "timeout": 10,
             "statusMessage": "smtw prompt routing"
           }
@@ -19,8 +19,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"{FABLE_LITE_ROOT}/adapters/codex_cli/pre_tool_use.py\"",
-            "commandWindows": "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"python '{FABLE_LITE_ROOT}/adapters/codex_cli/pre_tool_use.py'\"",
+            "command": "python3 \"{SMTW_ROOT}/adapters/codex_cli/pre_tool_use.py\"",
+            "commandWindows": "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"python '{SMTW_ROOT}/adapters/codex_cli/pre_tool_use.py'\"",
             "timeout": 10,
             "statusMessage": "smtw pre-tool gate"
           }
@@ -33,8 +33,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"{FABLE_LITE_ROOT}/adapters/codex_cli/post_tool_use.py\"",
-            "commandWindows": "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"python '{FABLE_LITE_ROOT}/adapters/codex_cli/post_tool_use.py'\"",
+            "command": "python3 \"{SMTW_ROOT}/adapters/codex_cli/post_tool_use.py\"",
+            "commandWindows": "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"python '{SMTW_ROOT}/adapters/codex_cli/post_tool_use.py'\"",
             "timeout": 10,
             "statusMessage": "smtw post-tool ledger"
           }
@@ -46,8 +46,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"{FABLE_LITE_ROOT}/adapters/codex_cli/stop.py\"",
-            "commandWindows": "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"python '{FABLE_LITE_ROOT}/adapters/codex_cli/stop.py'\"",
+            "command": "python3 \"{SMTW_ROOT}/adapters/codex_cli/stop.py\"",
+            "commandWindows": "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"python '{SMTW_ROOT}/adapters/codex_cli/stop.py'\"",
             "timeout": 10,
             "statusMessage": "smtw stop gate"
           }

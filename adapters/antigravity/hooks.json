@@ -3,14 +3,14 @@
     "PreInvocation": [
       {
         "type": "command",
-        "command": "{PYTHON_EXECUTABLE} {FABLE_LITE_ROOT}/adapters/antigravity/oma_hook.py PreInvocation",
+        "command": "{PYTHON_EXECUTABLE} {SMTW_ROOT}/adapters/antigravity/oma_hook.py PreInvocation",
         "timeout": 30
       }
     ],
     "PostInvocation": [
       {
         "type": "command",
-        "command": "{PYTHON_EXECUTABLE} {FABLE_LITE_ROOT}/adapters/antigravity/oma_hook.py PostInvocation",
+        "command": "{PYTHON_EXECUTABLE} {SMTW_ROOT}/adapters/antigravity/oma_hook.py PostInvocation",
         "timeout": 30
       }
     ],
@@ -20,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "{PYTHON_EXECUTABLE} {FABLE_LITE_ROOT}/adapters/antigravity/oma_hook.py PreToolUse",
+            "command": "{PYTHON_EXECUTABLE} {SMTW_ROOT}/adapters/antigravity/oma_hook.py PreToolUse",
             "timeout": 30
           }
         ]
@@ -32,7 +32,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "{PYTHON_EXECUTABLE} {FABLE_LITE_ROOT}/adapters/antigravity/oma_hook.py PostToolUse",
+            "command": "{PYTHON_EXECUTABLE} {SMTW_ROOT}/adapters/antigravity/oma_hook.py PostToolUse",
             "timeout": 30
           }
         ]
@@ -41,7 +41,7 @@
     "Stop": [
       {
         "type": "command",
-        "command": "{PYTHON_EXECUTABLE} {FABLE_LITE_ROOT}/adapters/antigravity/oma_hook.py Stop",
+        "command": "{PYTHON_EXECUTABLE} {SMTW_ROOT}/adapters/antigravity/oma_hook.py Stop",
         "timeout": 30
       }
     ]

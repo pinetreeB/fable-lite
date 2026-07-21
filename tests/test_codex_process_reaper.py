@@ -300,8 +300,9 @@ def test_operator_guide_documents_opt_in_disable_and_hourly_backstop() -> None:
 
     # Then: it names default-off, both env controls, disable, and the untouched hourly backstop.
     assert "기본 OFF" in guide
-    assert "FABLE_LITE_CODEX_REAPER" in guide
-    assert "FABLE_LITE_CODEX_REAPER_LOG" in guide
+    assert "SMTW_CODEX_REAPER" in guide
+    assert "SMTW_CODEX_REAPER_LOG" in guide
+    assert "FABLE_LITE_*" in guide
     assert "비활성화" in guide
     assert "mcp-reaper.ps1" in guide
     assert "백스톱" in guide
