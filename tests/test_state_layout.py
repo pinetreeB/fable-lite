@@ -17,6 +17,7 @@ from core.state_layout import (
     MIGRATION_MARKER_SCHEMA_VERSION,
     MIGRATION_PUBLISHED_PHASE,
     MIGRATION_RECEIPT_NAME,
+    MIGRATION_RECEIPT_TEMP_PREFIX,
     MIGRATION_STAGING_PREFIX,
     PROJECT_CONFIG_NAME,
     STATE_DIR_NAME,
@@ -35,6 +36,7 @@ def _write_published_marker(target: Path, source: Path) -> None:
     marker = {
         "schema_version": MIGRATION_MARKER_SCHEMA_VERSION,
         "migration_id": "test-migration",
+        "root": str(target.parent.resolve()),
         "source": str(source.resolve()),
         "target": str(target.resolve()),
         "phase": MIGRATION_PUBLISHED_PHASE,
@@ -183,6 +185,7 @@ def test_manifest_rejects_windows_casefold_collisions(tmp_path: Path) -> None:
         f"{MIGRATION_STAGING_PREFIX}123-token",
         MIGRATION_LOCK_NAME,
         MIGRATION_RECEIPT_NAME,
+        f"{MIGRATION_RECEIPT_TEMP_PREFIX}token",
     ],
 )
 def test_r2_hard_blocks_every_state_generation_and_migration_control_path(
@@ -212,6 +215,7 @@ def test_state_prefix_lookalikes_and_tracked_config_are_not_r2_state_paths(
         (f"{MIGRATION_STAGING_PREFIX}1-token/ledger.json", True),
         (MIGRATION_LOCK_NAME, True),
         (MIGRATION_RECEIPT_NAME, True),
+        (f"{MIGRATION_RECEIPT_TEMP_PREFIX}token", True),
         (PROJECT_CONFIG_NAME, False),
         ("nested/.smtw/ledger.json", False),
     ],

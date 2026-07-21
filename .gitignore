@@ -7,6 +7,7 @@ tmp/
 .smtw.migrating-*/
 .smtw-migration.lock
 .smtw-migration-receipt.json
+.smtw-migration-receipt.json.tmp-*
 build/
 dist/
 *.bak

@@ -17,6 +17,7 @@ LEGACY_ACTIVATION_CONFIG_NAME: Final = "config.json"
 
 MIGRATION_LOCK_NAME: Final = ".smtw-migration.lock"
 MIGRATION_RECEIPT_NAME: Final = ".smtw-migration-receipt.json"
+MIGRATION_RECEIPT_TEMP_PREFIX: Final = f"{MIGRATION_RECEIPT_NAME}.tmp-"
 MIGRATION_STAGING_PREFIX: Final = ".smtw.migrating-"
 MIGRATION_MARKER_NAME: Final = ".smtw-migration.json"
 MIGRATION_MARKER_SCHEMA_VERSION: Final = 1
@@ -117,7 +118,16 @@ def is_protected_state_name(name: str, *, windows: bool | None = None) -> bool:
         if casefolded
         else MIGRATION_STAGING_PREFIX
     )
-    return candidate in exact or candidate.startswith(prefix)
+    receipt_temp_prefix = (
+        MIGRATION_RECEIPT_TEMP_PREFIX.casefold()
+        if casefolded
+        else MIGRATION_RECEIPT_TEMP_PREFIX
+    )
+    return (
+        candidate in exact
+        or candidate.startswith(prefix)
+        or candidate.startswith(receipt_temp_prefix)
+    )
 
 
 def inspect_state_layout(project_root: str | Path) -> StateLayout:
@@ -206,7 +216,7 @@ def build_state_manifest(
     *,
     windows: bool | None = None,
 ) -> StateManifest:
-    root = Path(directory)
+    root = _filesystem_path(Path(directory))
     _require_plain_directory(root, "manifest root")
     casefolded = os.name == "nt" if windows is None else windows
     entries: list[ManifestEntry] = []
@@ -232,7 +242,14 @@ def build_state_manifest(
 def read_migration_marker(target: str | Path) -> dict[str, object]:
     marker_path = Path(target) / MIGRATION_MARKER_NAME
     try:
+        marker_info = marker_path.lstat()
+        if marker_path.is_symlink() or _stat_is_reparse_point(marker_info):
+            raise StateLayoutError("migration marker is a link or reparse point")
+        if not stat.S_ISREG(marker_info.st_mode):
+            raise StateLayoutError("migration marker is not a regular file")
         raw: object = json.loads(marker_path.read_text(encoding="utf-8"))
+    except StateLayoutError:
+        raise
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise StateLayoutError(
             f"migration marker cannot be read: {type(exc).__name__}"
@@ -269,6 +286,7 @@ def _validate_marker_fields(marker: dict[str, object], target: Path) -> None:
         raise StateLayoutError("migration marker is not published")
     for field in (
         "migration_id",
+        "root",
         "source",
         "target",
         "source_digest",
@@ -289,6 +307,14 @@ def _validate_marker_fields(marker: dict[str, object], target: Path) -> None:
     recorded_target = Path(str(marker["target"]))
     if _canonical_path(recorded_target) != _canonical_path(target):
         raise StateLayoutError("migration marker target does not match its directory")
+    recorded_root = Path(str(marker["root"]))
+    if _canonical_path(recorded_root) != _canonical_path(target.parent):
+        raise StateLayoutError("migration marker root does not match its project")
+    recorded_source = Path(str(marker["source"]))
+    if _canonical_path(recorded_source) != _canonical_path(
+        target.parent / LEGACY_STATE_DIR_NAME
+    ):
+        raise StateLayoutError("migration marker source does not match legacy state")
 
 
 def _collect_manifest_entries(
@@ -305,14 +331,20 @@ def _collect_manifest_entries(
         raise StateLayoutError(f"cannot scan state tree: {directory}") from exc
     for child in children:
         relative = Path(child.path).relative_to(root).as_posix()
-        if _is_transient_manifest_path(relative):
-            continue
         try:
             info = child.stat(follow_symlinks=False)
         except OSError as exc:
             raise StateLayoutError(f"cannot stat state entry: {relative}") from exc
         if child.is_symlink() or _is_reparse_point(child, info):
             raise StateLayoutError(f"state entry is a link or reparse point: {relative}")
+        if _is_transient_manifest_path(relative):
+            if stat.S_ISREG(info.st_mode):
+                continue
+            if stat.S_ISDIR(info.st_mode) and relative.endswith(".tmp"):
+                continue
+            raise StateLayoutError(
+                f"transient state entry has an invalid type: {relative}"
+            )
         canonical = relative.casefold() if windows else relative
         previous = canonical_paths.setdefault(canonical, relative)
         if previous != relative:
@@ -408,6 +440,18 @@ def _lexists(path: Path) -> bool:
 def _canonical_path(path: Path) -> str:
     normalized = os.path.normcase(str(path.resolve()))
     return normalized.casefold() if os.name == "nt" else normalized
+
+
+def _filesystem_path(path: Path) -> Path:
+    """Use Win32's extended-length form for recursive state-tree I/O."""
+    if os.name != "nt":
+        return path
+    absolute = os.path.abspath(path)
+    if absolute.startswith("\\\\?\\"):
+        return Path(absolute)
+    if absolute.startswith("\\\\"):
+        return Path(f"\\\\?\\UNC\\{absolute.lstrip('\\')}")
+    return Path(f"\\\\?\\{absolute}")
 
 
 def _is_sha256(value: object) -> bool:
