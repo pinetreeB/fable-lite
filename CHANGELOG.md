@@ -4,6 +4,10 @@
 
 ### Added
 
+- **CI-02 interpreter matrix and tool pins**: CI now runs the full gate on
+  Ubuntu Python 3.12/3.13/3.14 and Windows Python 3.12/3.14, and installs
+  pytest/ruff/build from pinned `ci/constraints.txt` so runs stay
+  reproducible instead of tracking whatever pip resolves that day.
 - **CLI-02 operator onboarding**: added secret-safe human/JSON `smtw doctor`
   and concise `smtw status`, explicit non-overwriting `smtw init`, and a
   write-free `smtw migrate --check` with human migration summaries and stable

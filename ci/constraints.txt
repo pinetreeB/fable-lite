@@ -1,0 +1,6 @@
+# CI quality-tool pins (CI-02). Versions match the last green unpinned runs
+# (2026-07-23) so CI stays reproducible; bump deliberately via PR, not by
+# whatever pip resolves on a given day.
+pytest==9.1.1
+ruff==0.15.22
+build==1.5.0

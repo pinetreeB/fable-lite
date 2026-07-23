@@ -11,11 +11,30 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # CI-02: supported interpreter range — full suite on every
+          # Ubuntu 3.12–3.14 plus the Windows floor and ceiling.
           - os: ubuntu-latest
+            python: "3.12"
+            venv_python: ./.ci-venv/bin/python
+            venv_smtw: ./.ci-venv/bin/smtw
+            venv_fable_lite: ./.ci-venv/bin/fable-lite
+          - os: ubuntu-latest
+            python: "3.13"
+            venv_python: ./.ci-venv/bin/python
+            venv_smtw: ./.ci-venv/bin/smtw
+            venv_fable_lite: ./.ci-venv/bin/fable-lite
+          - os: ubuntu-latest
+            python: "3.14"
             venv_python: ./.ci-venv/bin/python
             venv_smtw: ./.ci-venv/bin/smtw
             venv_fable_lite: ./.ci-venv/bin/fable-lite
           - os: windows-latest
+            python: "3.12"
+            venv_python: ./.ci-venv/Scripts/python.exe
+            venv_smtw: ./.ci-venv/Scripts/smtw.exe
+            venv_fable_lite: ./.ci-venv/Scripts/fable-lite.exe
+          - os: windows-latest
+            python: "3.14"
             venv_python: ./.ci-venv/Scripts/python.exe
             venv_smtw: ./.ci-venv/Scripts/smtw.exe
             venv_fable_lite: ./.ci-venv/Scripts/fable-lite.exe
@@ -26,9 +45,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python }}
       - name: Install quality tools
-        run: python -m pip install pytest ruff build
+        run: python -m pip install -c ci/constraints.txt pytest ruff build
       - name: Version synchronization
         run: python scripts/sync_version.py --check
       - name: Ruff
@@ -47,7 +66,7 @@ jobs:
         run: python -m build --wheel --outdir dist
       - name: Validate wheel RECORD
         run: python scripts/check_wheel_contents.py --wheel-dir dist
-      - name: Install wheel in clean Python 3.12 environment
+      - name: Install wheel in a clean Python ${{ matrix.python }} environment
         run: |
           python -m venv .ci-venv
           ${{ matrix.venv_python }} -m pip install --no-index --find-links dist fable-lite
@@ -61,7 +80,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ci-${{ matrix.os }}
+          name: ci-${{ matrix.os }}-py${{ matrix.python }}
           path: |
             ${{ runner.temp }}/smtw-probes.json
             ${{ runner.temp }}/smtw-provenance.json
