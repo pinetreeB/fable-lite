@@ -26,7 +26,12 @@ MIGRATION_STAGING_PREFIX: Final = ".smtw.migrating-"
 MIGRATION_MARKER_NAME: Final = ".smtw-migration.json"
 MIGRATION_MARKER_SCHEMA_VERSION: Final = 1
 MIGRATION_PUBLISHED_PHASE: Final = "published"
-DEFAULT_STATE_WRITE_WAIT_SECONDS: Final = 1.0
+# The layout barrier serializes every state mutation on one migration lock, so
+# a bare-default writer's budget must absorb multi-agent contention.  1.0s was
+# too tight under CI load (unfair file lock, tail latency) and timed out on
+# .smtw-migration.lock; 5.0s covers 8-way contention while an uncontended write
+# still acquires immediately.  Latency-sensitive hooks pass wait_seconds=0.
+DEFAULT_STATE_WRITE_WAIT_SECONDS: Final = 5.0
 
 RUNTIME_STATE_DIR_NAMES: Final = frozenset(
     {STATE_DIR_NAME, LEGACY_STATE_DIR_NAME}

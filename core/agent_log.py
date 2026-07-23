@@ -19,7 +19,6 @@ from .runtime_env import (
     smtw_env,
 )
 from .state_layout import (
-    DEFAULT_STATE_WRITE_WAIT_SECONDS,
     state_dir,
     state_write_scope,
 )
@@ -93,8 +92,12 @@ def ledger_transaction(
             "release_wait_seconds",
         )
     )
-    layout_wait = min(wait_seconds, DEFAULT_STATE_WRITE_WAIT_SECONDS)
-    with state_write_scope(root, wait_seconds=layout_wait) as directory:
+    # The layout barrier and the inner ledger lock form one critical section,
+    # so the outer scope must honor the caller's full wait budget.  Capping it
+    # at the lower default starved concurrent writers under CI contention and
+    # timed out on the migration lock even though the ledger lock could wait
+    # (tests set FABLE_LITE_TEST_LOCK_WAIT_SECONDS=45 precisely for this).
+    with state_write_scope(root, wait_seconds=wait_seconds) as directory:
         directory.mkdir(parents=True, exist_ok=True)
         lock_path = directory / "ledger.lock"
         deadline = time.monotonic() + wait_seconds
