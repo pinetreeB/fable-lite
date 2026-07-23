@@ -1,200 +1,393 @@
 # show-me-the-work
 
-**show-me-the-work** (`smtw`, Korean: **쇼미더워크**) is evidence-based AI work supervision: no executed proof, no credible "done."
+**show-me-the-work** (`smtw`) is a local, hook-based work supervisor that checks for actually executed evidence before an AI calls a task done.
 
 [![version](https://img.shields.io/badge/version-2.6.0-brightgreen.svg)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-> 🇰🇷 **한국어가 1차 문서입니다**: [`README.ko.md`](README.ko.md)
+> 🇰🇷 Korean is the primary project language: [README.ko.md](README.ko.md)
 
-## 🎯 What is this? (for non-developers / vibe coders)
+## 1. Product in one minute
 
-When you ask an AI (Claude, Codex…) to write code, it's capable but sometimes **careless**:
+AI coding agents are capable, but they can edit code without running it, stop
+after promising a next step, or report a visual result they never observed.
+show-me-the-work watches local hook events, records work evidence, and challenges
+an unsupported completion claim.
 
-- It changes code and says "done" **without actually running it**
-- It builds a page and ends with "just open it in a browser" (never looked itself)
-- It picks **one guess** for a bug and fixes that (maybe the wrong spot)
-- It says "I'll do X next" and just **stops**
+It makes unverified completion materially harder and observable; it blocks up
+to twice, then records a fail-open escape to avoid deadlock. It does not make a
+model smarter or turn evidence into proof that the code is correct.
 
-`show-me-the-work` is an **automatic quality inspector** that sits next to the AI. When the AI tries to call something "done" without checking, it **blocks and demands evidence**. Install the plugin once, then turn on the config in whichever projects you want supervised — it works automatically from there.
+### Why the name?
 
-> Think of it as a flexible QA supervisor assigned to a skilled-but-careless worker. Silent most of the time; it only steps in the moment someone says "done" without proof.
+The project began as **fable-lite**, an experiment in transferring Fable 5's
+working discipline to smaller models. Model capability could not be
+transplanted, but investigation, verification, and completion discipline could
+be implemented as procedure. The v2.0 name describes that narrower product:
+when an agent says “done,” **show me the work**—the run, observation, and
+evidence.
 
-**One honest caveat**: show-me-the-work doesn't make the AI *smarter* — it just makes cutting corners *impossible to finish*. (In a real on/off comparison, correctness was identical; what differed was how rigorously the work got verified.)
+## 2. Guarantees and non-guarantees
 
-## 📖 Why "show-me-the-work"
+### What it is designed to provide
 
-This project was renamed from **fable-lite** in v2.0. It began by asking whether Fable 5's working discipline could be transferred to lower models. The answer was useful but narrower than imitation: model capability cannot be transplanted, while verification, investigation, and completion discipline can be enforced as procedure.
+- Observation of verification commands that actually ran, including their
+  success or failure.
+- Detection when relevant files changed after the verification being credited.
+- Identity-scoped contracts for selected high-risk work.
+- R2 protection against destructive work that may erase a peer's unsettled
+  changes or protected state.
+- At most two completion bounces for ordinary evidence gates, followed by an
+  explicit audited fail-open escape.
+- Local audit evidence for turns, invocations, paths, goals, scorecards, and
+  blocked destructive commands.
 
-By v2.0, the product had grown into **evidence-based AI work supervision** across Claude Code, Codex, and Antigravity. The old name described the starting experiment; the new name describes the product.
+### What it does not guarantee
 
-The name reverses two familiar cheat-code memes: StarCraft's `show me the money` and the broader "show me" challenge. This is the anti-cheat version: **Show me the work.** Don't tell the user it passed — show the run, the observation, and the evidence.
+- That code, research content, or a visual result is correct.
+- Complete observation of databases, services, network state, or remote side
+  effects.
+- Complete defense against deliberate arbitrary-code evasion.
+- Replacement of human review or operational authorization.
+- Live support for every AI host.
+- Perfect parsing of every shell, PowerShell, or dynamic language grammar.
 
-## 🤝 Synergy with LazyCodex (ulw)
-
-[LazyCodex/OmO](https://github.com/code-yeongyu/oh-my-openagent)'s `ulw` drives tasks to completion; show-me-the-work inspects evidence at every completion attempt — the roles don't overlap. Run both on Codex CLI (`adapters/codex_cli/INSTALL.ko.md`) and you get runs that **push all the way through, but can't finish with an unverified "done"**. This repository itself was built with that combo (implemented under ulw, inspected by smtw).
-
-## 💬 Common objections (FAQ)
-
-### "Hooks don't actually force anything — the AI can just ignore them."
-
-**Asking in words and blocking in code are different things.** That objection is true for the first half only.
-
-- Writing "always verify before finishing" in a prompt is a **request**. The AI can ignore it — in our measurement, instruction-only compliance was **0/3**.
-- show-me-the-work is not a request; it is a **lock**. Until the condition (evidence of an actually-executed verification) is met, the "done" declaration and tool calls are **rejected at the program level**. It mechanically bounces a verification-less "done" back at most twice, then — to avoid a deadlock — lets the turn through with an audit trail and warning instead of blocking forever — the same measurement showed hard gates converging to **3/3** blocked-then-recovered-with-real-evidence ([experiment report](docs/reviews/p5b-n1-natural.md)).
-
-One fun piece of evidence: while building this repository, **even a frontier model (Fable 5) got blocked by this gate and had to rewrite its report.** Hooks don't rely on the model's goodwill.
-
-### "Verification is the human's job. Why build this at all?"
-
-Agreed — **final responsibility stays with the human, and show-me-the-work doesn't replace that.** What it blocks is the step before: **the AI claiming "I verified it" while having executed nothing.**
-
-- People who can't read code (a core audience of this tool) have **no way to tell** that claim is fake.
-- People who can read code still can't personally verify the thousands of lines an AI produces per day.
-
-show-me-the-work is a **first-pass filter**: no executed evidence, no "done". It doesn't remove human verification — it raises the trustworthiness of what reaches the human.
-
-### "Can't the AI just fill in the format and slip through?"
-
-**In theory, yes. We can't fully prevent it and don't claim to.** However:
-
-1. The gate **doesn't trust the AI's words — it reads tool results**: not the sentence "tests passed", but whether a test command actually ran and succeeded.
-2. The behavior change is **measured, blind-judged**: ON won 5/5 tasks, and every gap appeared exactly where verification gets tedious ([A/B report](docs/reviews/e1-ab-report.md)).
-3. It doesn't block forever — after 2 blocks it lets the run proceed (no deadlocks). That's a safety valve, and an honest limitation we document.
-
-In short: **show-me-the-work is not a tool that makes you trust the AI — it's a tool that lets you trust it less.**
-
----
-
-## Technical summary
-
-A Korean-first, evidence-based AI work supervisor with live hook receipts for Claude Code and Codex CLI, plus an Antigravity adapter validated by payload injection. It enforces investigation, verification grounding, evidence-gated completion, scope control, and high-risk contracts as **deterministic hooks**, not suggestions.
-
-**A procedure transplant, not a capability transplant.** Weight-level abilities (out-of-spec defect discovery, self-driven implication depth) are explicitly out of scope; the harness escalates honestly instead of pretending.
-
-## Why hooks, not prompts
-
-In a live 3-run experiment with unrestricted tools ([report](docs/reviews/p5b-n1-natural.md)), pack instructions alone produced **0/3** natural compliance; the deterministic Stop gate converged all three runs to *one block → one full recovery* with real evidence (file:line citations, re-run outputs). Discipline packs tell the model *what* to do; hooks make skipping it impossible to finish.
-
-In a controlled ON-vs-OFF A/B (5 tasks, blind-judged by a different model — [report](docs/reviews/e1-ab-report.md)): **ON won 5/5 (137 vs 109 rubric points)**. Correctness was identical; the gap opens exactly where verification gets inconvenient — the render task (OFF: *"just open it in a browser"* vs ON: real browser observation) and the multi-story task (OFF made zero verification attempts).
-
-The qualitative gap **held across 3 repeat runs** (OFF verified 0/3, ON 3/3), though the *cost multiplier* swings too much to quote as a single number ([repeat study](docs/reviews/e1b-repeat.md)) — which also surfaced and fixed a real verification-crediting bug in the harness. We report what replicates and flag what doesn't.
-
-The same discipline generalizes beyond coding. In a real multi-agent research session, a worker fabricated its deliverables three ways — hard-coded guesses emitted by a generator script, forged/truncated source citations, and a "80 items collected" claim with no output file — and every one was caught by *completion-is-evidence* forensics rather than by trusting the report ([case study](docs/reviews/2026-07-21-fabrication-case-study.md)). The harness can't judge whether content is *true*, but it makes the cheap, common shapes of fabrication observable and expensive.
-
-## What's inside
-
-| Gate | Mechanism |
-|------|-----------|
-| Investigation protocol (3+ hypotheses, evidence, rejections) | pack + **N1 compliance parser** on Stop (bilingual markers) |
-| Verification grounding (RUN→OBSERVE→FIX→RE-RUN) | pack + evidence ledger |
-| Evidence-gated completion | Stop hook blocks changed-but-unverified turns (max 2, fail-open) |
-| Filesystem provenance | bounded snapshots, per-turn baselines, and full Stop reconciliation |
-| Scope drift detection | PostToolUse warning |
-| High-risk contract (auth/migration/payment/mass-delete) | PreToolUse **hard block** until `.fable-lite/contract.json` exists |
-| Korean-first routing | "버그 고쳐줘", "왜 안 돼" → investigation pack |
-| Goals checkpoints | `goals/goals.py` CLI, verify-with-evidence required |
-| Session Scorecard | per-session block, recovery, and cap counts from an append-only gate journal |
-
-Pure-stdlib Python core (zero Claude Code imports — platform-neutral, adapters are thin wrappers), single state dir `.fable-lite/`, every hook fail-open, Windows-native.
-
-> Compatibility note: the internal state path remains `.fable-lite/` to avoid breaking existing installations. A public alias that separates shared config from per-user runtime state is still at the design stage with no version committed yet (follow-up ADR, STATE-01).
-
-The canonical Python package is `smtw`. The legacy `fable_lite` import,
-`python -m fable_lite`, and public submodule entry points such as
-`python -m fable_lite.scorecard` remain as deprecated compatibility shims
-through v3.x and emit `DeprecationWarning`; removal is reserved for v4 or later.
-Environments that explicitly promote that warning to an error, including
-`PYTHONWARNINGS=error`, are not compatibility targets. Running a source checkout
-uses the adjacent `pyproject.toml` version even when older global distribution
-metadata is installed; `smtw doctor` reports both paths and versions and warns
-when they differ.
-
-Non-document file changes require a fresh successful verification in every task mode (`quick`, `normal`, and `deep`). No change and documentation-only turns retain their existing allow behavior.
+The distinction matters: prompts alone produced 0/3 natural compliance in one
+live study, while the Stop gate produced 3/3 blocked-then-recovered runs with
+real evidence ([report](docs/reviews/p5b-n1-natural.md)). In a five-task blinded
+comparison, ON won 5/5 on verification discipline while task correctness was
+unchanged ([A/B report](docs/reviews/e1-ab-report.md)). These are small
+measurements of behavior, not a general correctness guarantee.
 
 ### Host support
 
 | Host | Current status |
 |---|---|
-| Claude Code | live hook chain confirmed |
-| Codex CLI | live hook chain confirmed |
-| Antigravity | payload-injection conformance confirmed; hooks.json matches the official host schema and parses/loads on host 1.1.2+ (5 handlers), but host execution of config-path hooks remains unconfirmed |
+| Claude Code | Live hook chain confirmed |
+| Codex CLI | Live hook chain confirmed |
+| Antigravity | Payload and config-load conformance confirmed on host 1.1.2+; live execution of config-path hooks remains unconfirmed |
 
-### State and honest limits
+## 3. Names, packages, and paths
 
-User state remains under `.fable-lite/`. The main ledger, goals, intent/contract files, per-agent JSONL logs, bounded session-scorecard cache, provenance configuration, snapshots, turn baselines, gate journal, locks, and recovery backups all live there. Important paths include `ledger.json`, `agents/*.jsonl`, `snapshots/workspace-current.json`, `snapshots/turns/**`, `scorecard/gates.jsonl`, and `provenance-config.json`.
+| Surface | Canonical | Legacy / compatibility |
+|---|---|---|
+| Product | show-me-the-work | fable-lite (former name) |
+| CLI | `smtw` | `fable-lite` |
+| Python import | `smtw` | `fable_lite` |
+| Distribution | `fable-lite` for now | Same distribution |
+| Runtime state | `.smtw/` for new or migrated projects | `.fable-lite/` for unmigrated projects |
+| Project config | `.smtw.toml`, then `pyproject.toml` `[tool.smtw]` | `.fable-lite/config.json` fallback |
+| Runtime environment | `SMTW_*` | `FABLE_LITE_*` read aliases |
 
-- Ledger migration is explicit: set `FABLE_LITE_AUTO_MIGRATION=1` in the hook process environment. Migration still requires the packaged W9/W10 receipts to be green. A v2 ledger with a legacy invocation missing `status` is never rewritten while this opt-in is off; it loads as attribution-degraded and destructive R2 operations fail closed. With the opt-in on, only invocations proven older than the 30-minute lease are backfilled as `closed`; recent invocations with complete R2 evidence remain `open`. Unclassifiable rows stay unchanged and degraded. Migration failures remain fail-open for the hook process but emit a `core.ledger` warning with stage and detail. Successful writes use an immutable `ledger.v2-invocation-status.json.bak`, full schema validation, and atomic replacement.
-- Stop blocks at most twice and then fail-opens; this prevents deadlocks but is not an adversarial-model security boundary.
-- Files outside the project root and database or network side effects are not directly observed.
-- Provenance supports up to 10,000 tracked entries and 256 MiB. A full Stop reconciliation near that envelope can take several seconds. Larger or slower scopes return an explicit advisory-only `scope too large` state instead of committing a partial snapshot. Time limits are cooperative between filesystem calls and hash chunks; one blocked OS call cannot be preempted.
-- Direct `ssh` and local-to-remote `scp` attempts are tracked as remote mutation epochs independently of possible local effects, even when the overall command fails after a partial remote mutation. A later, separately started successful verification, including a local-only check, can satisfy the epoch; this does not prove that remote state was observed as clean. Shell commands keep local snapshot observation enabled, so redirects, pipelines, chains, substitutions, and unsafe SSH options take both the conservative local path and the remote epoch path when applicable. Query/forward-only SSH operations and `scp` downloads do not create remote epochs.
-- Promise-only text completion remains manual probe `PRB-01`; there is no dedicated blocking rule. Independent per-gate toggles remain manual probe `PRB-11` and are not implemented.
-- The harness improves work discipline and evidence quality. It does not make a model more capable or guarantee complete defense against deliberate evasion.
+There is one authoritative state tree at a time. A legacy activation config may
+remain a fallback config source during the compatibility window even after the
+runtime authority has migrated.
 
-## Install
+## 4. One-minute install
 
-**Requires Python 3.12+ on PATH in the target environment** — the hooks are stdlib-Python scripts, so a host without a resolvable `python` (e.g. a fresh worker box) must install it first. No third-party packages.
+Requirements: Python 3.12+ must be on `PATH`. The runtime is standard-library
+only. Project scope is recommended so unrelated projects do not pay Python
+startup cost on every host hook event.
 
-Claude Code supervision is a quiet per-project opt-in. Create
-`<project>/.fable-lite/config.json` with exactly
-`{"schema_version":1,"supervision":true}` to enable it. A missing config,
-`false`, or a non-boolean value leaves every hook as a silent no-op; the exact
-user home directory is always disabled. `SMTW_TEST_FORCE_ENABLE=1` bypasses
-the config check only for automated adapter tests and must not be used for
-normal or production sessions.
-
-Initial `cwd fallback is best-effort`, not a security boundary: before Claude
-provides `CLAUDE_PROJECT_DIR` or a session root is latched, a forged hook
-payload/cwd can steer the initial upward config search. Once present, a
-mismatched env root is effective for that hook only when that project has its
-own exact opt-in config; otherwise supervision is inactive for the hook. The
-write-once latch remains unchanged.
-For a corrupt inactive config, a once-per-session warning and TTL cleanup may
-write only under global plugin data; the inactive project tree is never
-written.
-
-Recommended local-clone install:
-
-```
+```bash
 git clone https://github.com/pinetreeB/show-me-the-work
-claude plugin marketplace add <path-to-show-me-the-work>
-/plugin install show-me-the-work@show-me-the-work
-```
-
-After the plugin is registered in a marketplace, `/plugin marketplace add pinetreeB/show-me-the-work` can replace the local path step.
-
-### Project-scope install (true zero cost elsewhere)
-
-A user-scope (global) install still starts a Python interpreter for every hook
-event in every project — inactive projects exit immediately with `{}`, but the
-interpreter startup itself remains. For genuinely zero cost outside supervised
-projects, install the plugin at project scope so its hooks load only inside the
-chosen project:
-
-```
+cd show-me-the-work
+claude plugin marketplace add .
 claude plugin install show-me-the-work@show-me-the-work --scope project
+smtw init --root .
+smtw doctor --root .
 ```
 
-This records `"enabledPlugins": {"show-me-the-work@show-me-the-work": true}` in
-the project's `.claude/settings.json`, which can be committed and shared. Use
-`--scope local` instead for a personal, uncommitted variant
-(`.claude/settings.local.json`). The reverse direction also works: keep a
-user-scope install and switch it off for one project by setting the same key to
-`false` in that project's `.claude/settings.local.json`. Either way, supervision
-additionally requires the per-project `.fable-lite/config.json` opt-in described
-above.
+`smtw init` refuses the exact user home, never overwrites an existing canonical
+or legacy config, does not create runtime state, and does not migrate legacy
+state. By default it creates `.smtw.toml`, adds runtime patterns to
+`.gitignore`, and points to `smtw doctor`. Use `--config pyproject` to place the
+canonical table in `pyproject.toml`, or `--no-gitignore` to leave ignore rules
+unchanged.
 
-## Verify
+For a personal uncommitted plugin registration, use Claude's `--scope local`.
+A user-scope install is also possible, but inactive projects still start a
+Python process before returning an empty hook result. The exact user home is
+always inactive even if a config is present.
 
+The initial `cwd fallback is best-effort`, not a security trust boundary.
+Before Claude provides `CLAUDE_PROJECT_DIR` or the session root is latched, a
+forged hook payload or working directory can steer the initial upward config
+search. A mismatched environment root is effective for that hook only when the
+selected project has its own exact opt-in config.
+
+## 5. Project configuration
+
+The preferred dedicated config is:
+
+```toml
+# .smtw.toml
+schema_version = 1
+supervision = true
 ```
-python -m pytest tests/ -q      # unit tests
-python eval/run_probes.py --strict  # deterministic probe suite; 17 pass, 0 fail, 3 manual
-python eval/e2e_smoke.py        # full hook-chain smoke (real CC payload schema)
+
+The canonical alternative is:
+
+```toml
+# pyproject.toml
+[tool.smtw]
+schema_version = 1
+supervision = true
 ```
 
-## Credits
+Config precedence is strict:
 
-Procedural design (verification grounding, decomposition/evidence gates, investigation loop, early-stop prevention) adapted from [fivetaku/fablize](https://github.com/fivetaku/fablize) (MIT) — all prose and code rewritten. The intent-gate interview methodology (ambiguity scoring → threshold gating → one-question-at-a-time confirmation) is adapted from [Yeachan-Heo/gajae-code](https://github.com/Yeachan-Heo/gajae-code) (MIT). Evaluation-loop ideas informed by [rennf93/opus-fable-playbook](https://github.com/rennf93/opus-fable-playbook) and [elon-choo/fablever](https://github.com/elon-choo/fablever).
+1. `.smtw.toml`
+2. `pyproject.toml` `[tool.smtw]`
+3. legacy `.fable-lite/config.json`
+
+A declared but invalid higher-precedence config is an error; it does not fall
+through to an enabled legacy config. Canonical and legacy runtime environment
+variables may coexist only when their values agree. Conflicting values are
+fail-closed and `smtw doctor` reports the key names without printing secret raw
+values.
+
+### Existing legacy projects
+
+An existing project may keep this compatibility activation file:
+
+```json
+{"schema_version": 1, "supervision": true}
+```
+
+`smtw init` preserves it and suggests an explicit migration check. Setting
+`supervision = false` in canonical config, or removing all activation config,
+disables supervision; disabling does not delete existing state.
+`SMTW_TEST_FORCE_ENABLE=1` is test-only and must not be used for normal
+sessions.
+
+## 6. State authority and migration
+
+`smtw status` and `smtw doctor` expose the current authority:
+
+| Layout | Meaning | Authority / action |
+|---|---|---|
+| `EMPTY` | No state tree exists | A future active write uses `.smtw/` |
+| `LEGACY` | Only an unmigrated legacy tree exists | `.fable-lite/`; migration is optional and explicit |
+| `NATIVE` | A native canonical tree exists without a migration marker | `.smtw/` |
+| `MIGRATING` | Legacy source plus owned staging state exists | `.fable-lite/`; wait for or investigate the migration |
+| `MIGRATED` | A verified published canonical tree exists | `.smtw/`; preserved legacy is not a fallback authority |
+| `CONFLICT` | The layout cannot prove one safe authority | No authority; related work blocks or reports degraded |
+
+```bash
+smtw status --root .
+smtw migrate --root . --check
+smtw migrate --root .
+smtw doctor --root .
+```
+
+Layout migration never runs automatically. `--check` is write-free. Migration
+copies, verifies, and atomically publishes a new authority; it defers while an
+active turn or open invocation exists. It keeps the source tree after success
+for explicit rollback analysis and never silently falls back to it after
+publication. State writers share a layout barrier so successful writes are not
+lost across the publish boundary.
+
+This layout migration is separate from versioned ledger backfills. Do not use a
+ledger migration environment switch as a substitute for `smtw migrate`.
+
+## 7. Quick operational commands
+
+```bash
+smtw doctor --root .
+smtw doctor --root . --json
+smtw status --root .
+smtw migrate --root . --check
+smtw quarantine list --root .
+smtw scorecard --root . --view coordination
+smtw goals status --root . --identity <host:session-id:agent>
+```
+
+`doctor` reports tool/distribution/module versions, Python, host/plugin/config,
+environment conflicts, state authority, migration readiness, active work,
+ledger/provenance health, quarantine usage, and probe/host status. Exit codes
+are `0` healthy, `1` unsafe/error, and `2` inactive/deferred/action required.
+`status` is the short runtime view.
+
+For a multi-story task:
+
+```bash
+smtw goals plan --root . --goal "release" --story "verify Windows" --verify-cmd "python -m pytest"
+smtw goals verify --root . --story "verify Windows" --evidence "pytest green"
+```
+
+For wmux-style delegation, `brief` creates the task discipline block and
+`check` compares the ledger with the worktree:
+
+```bash
+smtw brief --paths "core/**,tests/**" --verify-cmd "python -m pytest tests/" --sentinel tmp/.done --target codex
+smtw check --root . --agent codex --since-file tmp/.delegation-start
+```
+
+## 8. Gate behavior
+
+| Gate / boundary | Event | Evidence used | Block cap | Failure policy | Known limitation |
+|---|---|---|---|---|---|
+| N1 investigation | Prompt routing and Stop | Bilingual hypothesis, evidence, and rejection markers | Shares the Stop cap of 2 | Audited fail-open after cap | Markers prove report structure, not that a hypothesis is true |
+| N2 goals / intent / design | Prompt and completion checkpoints | Identity-scoped plan, verification evidence, or clarified intent | 2 per gate | Audited fail-open after cap | A synthetic or foreign identity cannot satisfy another active identity |
+| Verification completion | Stop / AfterAgent | Successful command observation covering current changes | 2 | Audited fail-open after cap | A successful test can still be the wrong test |
+| R1 high-risk contract | PreToolUse | Evidence-bearing, identity-scoped contract below the authoritative tree | No ordinary cap | Hard block until contract exists | Covers selected risk families; it is not external approval |
+| R2 destructive protection | PreToolUse | Parsed targets, logical/resolved candidates, peer ownership, protected state | No cap | Ambiguity and peer risk fail closed | Dynamic execution cannot always be statically decoded |
+| Scope drift | PostToolUse | Requested scope versus observed paths | Advisory | Warning, deduplicated per turn | It does not undo an edit |
+| Stale mutation | PreToolUse | Current turn identity and lifecycle | No cap | Mutation denies; proven read-only work keeps its existing policy | Old pre-upgrade turns can be hard to distinguish from abandoned work |
+| Runtime env conflict | Any activated hook | Canonical and legacy variable presence/value agreement | No cap | Fail closed | Reports names, never secret raw values |
+| State layout conflict | State consumer / mutation | Validated layout and migration marker | No cap | No authority; block or degraded report | Recovery may require operator inspection |
+
+General observer and health-recording failures are usually fail-open with a
+warning. That does not weaken R2, environment-conflict, or authority-conflict
+boundaries. Inline Python path hints are friction, not authorization; R2 remains
+the independent boundary.
+
+## 9. Multi-agent operation
+
+- **Identity:** exact identities use `host:session-id:agent`. A sole exact active
+  identity can be selected automatically; ambiguity requires `--identity` or
+  matching `--host`, `--session-id`, and `--agent`. Synthetic identities are
+  never presented as successful ownership.
+- **Candidate ownership:** the path declared by a tool is retained as a logical
+  project-relative candidate for attribution, while the current resolved path
+  is tracked separately for R2 peer matching. Symlink replacement does not
+  erase the declared ownership record.
+- **Settlement:** a peer's open invocation or unsettled revision must be closed
+  or explicitly settled before destructive work can consume it. Ownership is
+  not cleared merely by age.
+- **R2:** destructive commands are checked against peer candidates and both
+  canonical and legacy state paths. An unparseable destructive target is
+  denied rather than guessed safe.
+- **Goals:** checkpoints live in an identity namespace. Planning for one
+  identity cannot recover another identity's N2 gate.
+- **Quarantine:** a blocked destructive command is preserved best-effort in the
+  authoritative state tree. Preservation success or failure never changes the
+  R2 deny decision; operators can list, show, or clear records, but there is no
+  automatic apply.
+- **Stale turns:** mutation-capable work from a stale turn is denied before an
+  invocation is registered. Submit a current prompt to start a current turn.
+- **Migration:** do not manually mutate state during migration. The layout
+  barrier serializes supported writers, and migration defers while live work is
+  visible.
+
+[LazyCodex/OmO](https://github.com/code-yeongyu/oh-my-openagent)'s `ulw` can
+drive a task toward completion while show-me-the-work inspects completion
+evidence. They are complementary, but neither expands the other's
+authorization.
+
+## 10. Compatibility
+
+Legacy state/config/environment reads and the `fable_lite` Python shim remain
+available through the v3.x compatibility window. Removal is planned no earlier
+than v4; consult the changelog before upgrading. After a state migration is
+published, compatibility does not mean per-file fallback to the old authority.
+
+| Legacy surface | Status | Canonical replacement |
+|---|---|---|
+| `fable-lite` console script | Supported with compatibility status | `smtw` |
+| `import fable_lite` and public submodules | Supported aliases with one `DeprecationWarning` per process | `import smtw` |
+| `python -m fable_lite` | Supported, deprecated | `python -m smtw` |
+| `python -m fable_lite.cli` | Supported physical thin shim | `python -m smtw` |
+| `python -m fable_lite.scorecard` | Supported physical thin shim | `smtw scorecard` |
+| `python -m fable_lite.migrate` | Supported physical thin shim | `smtw migrate` |
+| Other public `fable_lite.<module>` execution | Physical compatibility shim present; CLI-bearing modules delegate to `smtw` | Prefer the top-level `smtw` CLI |
+
+Default warning handling is supported. Explicitly promoting
+`DeprecationWarning` to an error with `-W error::DeprecationWarning` or
+`PYTHONWARNINGS=error` is intentionally outside the compatibility contract.
+
+In a source checkout, an adjacent `pyproject.toml` plus `.git` makes the source
+version authoritative even if an older global distribution is installed.
+`smtw doctor` reports module and distribution paths/versions and warns on a
+mismatch. In a wheel install, distribution metadata remains authoritative.
+
+## 11. Performance and scope
+
+- Prefer project-scope plugin installation. A global inactive install performs
+  no project writes, but Python interpreter startup still occurs for each hook.
+- The release envelope is 10,000 observed entries and 256 MiB of regular-file
+  content. Full reconciliation has an 8-second cooperative deadline;
+  incremental observation has a 2-second deadline.
+- Full Stop reconciliation near the envelope can take several seconds. If an
+  entry, byte, or time budget is exceeded, the partial snapshot is discarded
+  and the turn reports `scope_too_large` instead of claiming complete
+  observation.
+- Deadlines are checked between filesystem calls and hash chunks. A single
+  blocked OS call cannot be preempted by this in-process scanner.
+- Layout inspection and `status` are local filesystem operations. `doctor`
+  additionally reads local config, ledger, quarantine inventory, and the last
+  probe receipt; it performs no network call.
+
+Use focused project roots and explicit provenance exclusions for generated or
+vendored trees. An exclusion reduces observation and must be reviewed as a
+trust decision.
+
+## 12. Privacy, retention, and deletion
+
+State is local to the project authority, but it can contain sensitive work
+context:
+
+- commands and affected paths;
+- file digests, invocation and turn metadata;
+- prompt-derived intent, goals, and high-risk contract evidence;
+- per-agent logs, verification observations, gate journals, and scorecards;
+- blocked-command quarantine content.
+
+Do not commit or transmit runtime state by default. `smtw init` proposes ignore
+patterns for both canonical and legacy trees. Quarantine is bounded to 64
+records, 16 MiB total, and seven days; each stored command is capped at 1 MiB
+with original/stored byte counts and SHA-256 metadata when truncated. Other
+state remains until project policy or an operator removes it.
+
+```bash
+smtw status --root .
+smtw quarantine list --root .
+smtw quarantine clear --root . --all
+```
+
+There is no automatic “reset all state” command. Before manual deletion,
+disable supervision, stop active agents, use `status`/`doctor` to identify the
+authority, preserve any audit or rollback material you need, and treat
+canonical and preserved legacy trees separately. Deleting the wrong tree can
+remove evidence or rollback data; disabling supervision alone does not delete
+anything.
+
+## 13. Development and verification
+
+The blocking CI matrix runs on Ubuntu and Windows with Python 3.12:
+
+```bash
+python scripts/sync_version.py --check
+ruff check core adapters fable_lite goals tests eval contrib scripts smtw --exclude eval/ab
+python -m pytest tests/ -q
+python eval/run_probes.py --strict --output tmp/smtw-probes.json
+python eval/e2e_smoke.py
+python -m compileall -q core adapters fable_lite goals eval contrib scripts smtw
+python -m eval.provenance.run --output tmp/smtw-provenance.json
+python -m build --wheel --outdir dist
+python scripts/check_wheel_contents.py --wheel-dir dist
+```
+
+CI then installs the wheel into a clean Python 3.12 virtual environment and
+smokes canonical and legacy module/console entry points. Release-quality also
+runs randomized provenance, the 1k/10k performance receipt (non-blocking
+because shared runners are noisy), and an eight-process Stop-counter race.
+
+The deterministic probe runner reports automatic pass/fail cases and leaves
+model-judged probes as `manual`. Use `--strict` for a non-zero exit on failure
+and a scratch `--output` path to avoid replacing a local receipt.
+
+### Credits and license
+
+The investigation, verification, decomposition, and early-stop procedures were
+adapted from ideas validated in
+[fivetaku/fablize](https://github.com/fivetaku/fablize) (MIT). The intent
+interview method was adapted from
+[Yeachan-Heo/gajae-code](https://github.com/Yeachan-Heo/gajae-code) (MIT).
+Evaluation-loop ideas were informed by
+[rennf93/opus-fable-playbook](https://github.com/rennf93/opus-fable-playbook)
+and [elon-choo/fablever](https://github.com/elon-choo/fablever). All prose and
+code in this repository were rewritten.
 
 MIT © pinetreeB

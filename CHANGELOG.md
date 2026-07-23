@@ -14,6 +14,15 @@
   healthy/unsafe/action-required exit codes.
 - **GOALS-02 identity-aware goals UX**: added canonical `smtw goals plan`, `verify`, and `status` commands with automatic selection of a sole exact active identity, unique host/session environment matching, explicit `--identity` or matching `--host`/`--session-id`/`--agent` selection, and explicit errors for ambiguity, wrong identities, and synthetic-only turns.
 
+### Changed
+
+- **DOC-02 bilingual README realignment**: rebuilt both READMEs around the
+  current canonical config and six-state authority model, explicit migration,
+  truthful gate failure policies, identity-aware multi-agent operation,
+  legacy module execution, performance/privacy limits, and the actual
+  cross-platform CI gates. Removed stale single-legacy-state, fixed-contract,
+  design-stage alias, and blanket fail-open claims.
+
 ### Fixed
 
 - **COMPAT-01/02 source and legacy execution semantics**: source checkouts now

@@ -1,215 +1,383 @@
 # show-me-the-work (쇼미더워크)
 
-**show-me-the-work**(짧은 표기 **smtw**, 쇼미더워크)는 "검증했다"는 말 대신 실제 실행 증거를 요구하는 AI 작업 감독 도구입니다.
+**show-me-the-work**(`smtw`, 쇼미더워크)는 AI가 “완료했다”고 말하기 전에 실제 실행 증거가 있는지 검사하는 로컬 훅 기반 작업 감독 도구입니다.
 
 [![version](https://img.shields.io/badge/version-2.6.0-brightgreen.svg)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-## 🎯 이게 뭔가요? (비개발자·바이브코더를 위한 설명)
+> English documentation: [README.md](README.md)
 
-AI(Claude·Codex 등)한테 코딩을 시켜보면, 실력은 좋은데 가끔 **덜렁댑니다**:
+## 1. 한 문장으로 이해하기
 
-- 코드를 고쳐놓고 **실제로 돌려보지도 않고** "다 됐어요"라고 합니다
-- 화면을 만들어놓고 "브라우저에서 열어보세요"로 끝냅니다 (자기가 안 봄)
-- 버그 원인을 **하나만 대충 찍고** 바로 고칩니다 (틀린 곳을 고칠 수도)
-- "다음엔 이걸 하겠습니다"라고 **말만 하고** 멈춥니다
+코딩 AI는 유능하지만, 코드를 실행하지 않고 완료했다고 하거나 다음 작업을
+약속한 뒤 멈추거나 직접 보지 않은 화면을 완성됐다고 보고할 수 있습니다.
+show-me-the-work는 로컬 훅 이벤트를 관측하고 작업 증거를 기록한 뒤, 근거 없는
+완료 보고에 이의를 제기합니다.
 
-`show-me-the-work`는 AI 옆에 붙는 **자동 품질 검사관**입니다. AI가 확인도 안 하고 "완료"하려 하면 **막아서고 "증거를 보여줘"라고 요구**합니다. 플러그인을 한 번 설치한 뒤, 감독할 프로젝트에서만 config를 켜면 자동으로 작동합니다. 한국어로 말해도("이거 왜 안 돼", "화면 만들어줘") 알아듣습니다.
+검증 없는 완료를 최대 두 번 되돌려 보내고, 이후에는 교착을 막기 위해
+경고·감사기록과 함께 통과시킵니다. 모델을 더 똑똑하게 만들거나 실행 증거를
+코드 정답의 증명으로 바꾸는 도구는 아닙니다.
 
-> 비유하면, **실력은 좋은데 덜렁대는 직원에게 붙여준 융통성 있는 품질관리 반장**입니다. 평소엔 조용하다가, 검증 없이 "됐어요" 하는 순간에만 "증거 가져와" 하고 잡습니다.
+### 왜 “show-me-the-work”인가요?
 
-**한 가지 정직하게**: show-me-the-work는 AI를 더 **똑똑하게** 만들지는 못합니다. 대충 넘어가는 걸 **못 하게** 만들 뿐입니다. (실제로 켜고 끄고 비교해보니 정답률 자체는 같았지만, "검증을 얼마나 꼼꼼히 하는가"는 확실히 달랐습니다 — 아래 실측 참고.)
+이 프로젝트는 **fable-lite**라는 이름으로 시작했습니다. “Fable 5의 일하는
+규율을 하위 모델에 옮길 수 있을까?”라는 실험에서 모델 능력 자체는 이식할 수
+없지만 조사·검증·완료 규율은 절차로 구현할 수 있다는 결론을 얻었습니다.
+v2.0의 새 이름은 그 좁고 정직한 제품 범위를 설명합니다. AI가 완료했다고
+말하면 실행·관측·증거를 보여달라고 요구합니다. **Show me the work.**
 
-## 📖 왜 "show-me-the-work"인가
+## 2. 보장하는 것과 보장하지 않는 것
 
-이 프로젝트는 v2.0에서 **fable-lite에서 show-me-the-work로 개명**했습니다. 출발점은 "Fable 5의 일하는 규율을 하위 모델에 옮길 수 있을까"라는 실험이었습니다. 모델 자체의 능력은 이식할 수 없지만, 조사·검증·완료 규율은 절차와 훅으로 강제할 수 있다는 결론을 얻었습니다.
+### 제공하도록 설계된 보장
 
-v2.0에서는 Claude Code뿐 아니라 Codex·Antigravity까지 같은 증거 계약으로 감독하면서 정체성이 **Fable 작업규율 이식 실험에서 증거 기반 AI 작업 감독 인프라**로 확장됐습니다. 예전 이름은 출발점을 설명했지만, 새 이름은 지금 하는 일을 직접 설명합니다.
+- verification command가 실제 실행됐는지와 성공·실패 결과를 관측합니다.
+- 인정된 검증 뒤 관련 파일이 다시 바뀌면 fresh verification이 아님을
+  탐지합니다.
+- 일부 high-risk 작업에 identity별 계약을 요구합니다.
+- R2가 다른 에이전트의 미정산 변경이나 보호 상태를 지울 수 있는 파괴 작업을
+  막습니다.
+- 일반 증거 게이트는 완료를 최대 두 번 되돌린 뒤, 명시적 감사기록을 남기고
+  fail-open합니다.
+- 턴·invocation·경로·goals·scorecard·차단 명령의 로컬 감사 증거를 남깁니다.
 
-이름은 스타크래프트 치트키와 `쇼미더머니` 밈을 안티치트로 뒤집었습니다. AI가 "다 했습니다"라고 말하면 한 줄로 답합니다. **Show me the work. 일한 거 보여줘.** 말이 아니라 실행·관측·증거를 보여달라는 뜻입니다.
+### 보장하지 않는 것
 
-## 🤝 LazyCodex(ulw)와 같이 쓰면 시너지
+- 코드, 조사 내용, 시각 결과가 정답이라는 보장
+- DB·서비스·네트워크·원격 부작용의 완전한 관측
+- 의도적인 arbitrary-code 우회에 대한 완전 방어
+- 인간 검토나 운영 승인의 대체
+- 모든 AI host의 live 지원
+- 모든 shell·PowerShell·동적 언어 문법의 완전한 해석
 
-[LazyCodex/OmO](https://github.com/code-yeongyu/oh-my-openagent)의 `ulw`는 작업을 끝까지 완주시키는 엔진이고, show-me-the-work는 완료 시점마다 검증 증거를 검문하는 장치라 역할이 겹치지 않습니다. Codex CLI에 둘을 같이 걸면(`adapters/codex_cli/INSTALL.ko.md`) **끝까지 밀고 나가되, 검증 없는 "다 됐어요"는 못 나가는** 조합이 됩니다. 실제로 이 저장소도 그 조합(ulw로 구현 + smtw로 검문)으로 개발됐습니다.
+프롬프트 지시만 사용한 한 실험에서는 자연 준수가 0/3이었고, Stop 게이트를
+켠 세션은 3/3이 실제 증거를 갖춘 차단 후 회복으로 수렴했습니다
+([실험 보고서](docs/reviews/p5b-n1-natural.md)). 5개 과제 블라인드 비교에서는
+검증 규율에서 ON이 5/5 이겼지만 과제 정답률은 같았습니다
+([A/B 보고서](docs/reviews/e1-ab-report.md)). 작은 행동 측정이지 일반적인
+정답 보장은 아닙니다.
 
-## 💬 자주 나오는 반론 (FAQ)
-
-### "훅을 걸어봤자 AI가 안 따르면 그만 아닌가요?"
-
-**"말로 시키는 것"과 "기계로 막는 것"은 다릅니다.** 그 비판은 앞쪽 절반에만 맞습니다.
-
-- 프롬프트에 "꼭 검증하고 완료해"라고 적는 건 **부탁**입니다. AI가 바쁘면(?) 무시합니다. 저희 실측에서도 지시문만으로는 준수율이 **0/3**이었습니다.
-- show-me-the-work는 부탁이 아니라 **자물쇠**입니다. 조건(실행된 검증 증거)이 채워지기 전에는 "완료" 선언과 도구 실행이 **프로그램 차원에서 거부**됩니다. 검증 없는 완료를 최대 두 번 기계적으로 되돌려 보내며, 교착을 막기 위해 그 이후에는 감사 기록과 경고를 남기고 통과시킵니다 — 같은 실측에서 하드 게이트는 **3/3** 차단 후 진짜 증거를 갖고 돌아왔습니다 ([실험 보고서](docs/reviews/p5b-n1-natural.md)).
-
-재미있는 증거 하나: 이 저장소를 개발하는 동안 **최상위 모델(Fable 5)조차 이 게이트에 차단당해서 보고서를 다시 쓴 일**이 실제로 있었습니다. 훅은 모델의 "성의"에 기대지 않습니다.
-
-### "검증은 어차피 사람이 해야죠. 이걸 왜 만들어요?"
-
-맞습니다 — **최종 책임은 사람에게 있고, show-me-the-work는 그걸 대체하지 않습니다.** 이 도구가 막는 건 그 전 단계의 문제입니다: **AI가 "검증했습니다"라고 말만 하고 실제로는 아무것도 실행하지 않은 경우**.
-
-- 코드를 못 읽는 사람(이 도구의 핵심 사용자입니다)은 그 말이 진짜인지 가짜인지 **구별할 방법 자체가 없습니다**.
-- 코드를 읽는 사람도, AI가 하루에 쏟아내는 수천 줄을 전부 직접 검증하는 건 이미 현실적으로 불가능합니다.
-
-show-me-the-work는 "실행된 증거가 없으면 완료라고 못 말하게" 하는 **1차 필터**입니다. 사람 검증을 없애는 게 아니라, 사람 앞에 도달하는 "다 됐어요"의 신뢰도를 올리는 것입니다.
-
-### "AI가 형식만 채우고 빠져나가면 그만 아니에요?"
-
-**이론상 가능합니다. 완전 방어는 못 하고, 그렇게 주장하지도 않습니다.** 다만:
-
-1. 게이트는 AI의 **말을 믿지 않고 도구 실행 결과를 읽습니다** — "테스트 통과했어요"라는 문장이 아니라, 테스트 명령이 실제로 실행되고 성공했는지를 봅니다.
-2. 행동이 실제로 바뀌는 게 **블라인드 비교로 측정**됐습니다 — 켠 쪽이 5과제 전승, 격차는 전부 "검증이 귀찮은 지점"에서 났습니다 ([A/B 보고서](docs/reviews/e1-ab-report.md)).
-3. 무한히 막지는 않습니다 — 2회 차단 후엔 통과시킵니다(작업 먹통 방지). 이건 안전장치이자, 저희가 문서에 적어둔 정직한 한계입니다.
-
-요약하면: **show-me-the-work는 "AI를 믿게 만드는 도구"가 아니라 "AI를 덜 믿어도 되게 만드는 도구"입니다.**
-
----
-
-## 기술 요약 (개발자용)
-
-`show-me-the-work`는 조사·검증·완료 규율을 Claude Code·Codex·Antigravity 훅으로 강제하는 한국어 우선 AI 작업 감독 도구입니다.
-
-> 왜 프롬프트가 아니라 훅인가: 도구 무제한 자연 세션 3회 실측에서 팩 지시만으로는 준수 **0/3**, 하드 게이트는 **3/3을 "1차단→1회복(실증거 동반)"으로 수렴**시켰습니다 — [실험 보고서](docs/reviews/p5b-n1-natural.md).
->
-> 효과는? ON vs OFF 통제 A/B(5과제, 다른 모델이 블라인드 채점)에서 **ON 5/5 전승(총점 137 vs 109)**. 정확성은 무차이 — 값이 갈리는 지점은 "검증이 귀찮은 순간"입니다: 렌더 과제에서 OFF는 "열어보세요"로 끝, ON은 브라우저로 실제 관측·검증. 멀티스토리에서 OFF는 검증 시도 0회 — [A/B 보고서](docs/reviews/e1-ab-report.md).
->
-> 이 정성적 차이는 **반복 3회에서 견고하게 재현**됐습니다(OFF 검증 0/3, ON 3/3). 단 "몇 배 비싸다"는 배율은 표본마다 크게 흔들려 단일 숫자로 볼 수 없습니다([반복 측정](docs/reviews/e1b-repeat.md)) — 이 반복 실험은 smtw 자체의 검증 인정 버그도 찾아내 수정으로 이어졌습니다. **재현되는 것만 보고하고, 안 되는 것은 안 된다고 적습니다.**
-
-> 이 규율은 코딩 밖에서도 통합니다. 실제 멀티에이전트 리서치 세션에서 한 워커가 산출물을 세 가지 방식으로 조작했는데 — 추측값을 하드코딩한 생성 스크립트로 결과 파일 양산, 근거 URL 위조(검색쿼리·절단 링크), "80건 확보"라는 무산출 완료 보고 — 전부 워커의 보고를 믿는 대신 **"완료는 증거다"** 원칙의 포렌식으로 걸러졌습니다([사례 연구](docs/reviews/2026-07-21-fabrication-case-study.md)). 게이트가 내용의 *진위*를 판정하진 못하지만, 값싸고 흔한 조작의 형태는 관측 가능하고 비싸게 만듭니다.
-
-## v2 현재 기능
-
-- 한국어 프롬프트 분류: `버그 고쳐줘`, `안돼`, `에러`, `페이지 만들어줘` 같은 요청을 조사·검증 팩으로 라우팅합니다.
-- 파일시스템 provenance: bounded snapshot, 턴별 baseline, Stop full reconcile로 실제 파일 변경을 대조합니다.
-- Stop gate: 비문서 파일 변경 후 fresh 성공 검증이 없으면 `quick`·`normal`·`deep` 모드 모두 최대 2회 완료를 차단합니다. 변경 없음과 문서 전용 변경은 기존처럼 허용합니다.
-- N1 준수 게이트: 조사 출력에서 `가설 1:`, `가설 2:`, `가설 3:`, `기각:`, `증거:` 마커를 파싱합니다.
-- N3 scope guard: 요청 범위 밖 파일 변경을 PostToolUse 단계에서 경고합니다.
-- R1 high-risk contract: 인증, 결제, DB 마이그레이션 등 high-risk 편집은 구체적 `evidence`가 포함된 `.fable-lite/contract.json`이 있어야 진행됩니다.
-- Session Scorecard: 세션별 차단 시도·회복·cap 통과를 append-only gate journal에서 집계합니다.
-
-> 내부 상태 경로 `.fable-lite/`는 기존 설치를 깨지 않기 위해 유지합니다. 공유 설정과 개인 실행 상태를 분리하는 공개 별칭은 아직 버전이 정해지지 않은 설계 단계입니다(후속 ADR 대상, STATE-01).
-
-### 호스트 지원 상태
+### 호스트 지원
 
 | 호스트 | 현재 상태 |
 |---|---|
 | Claude Code | 라이브 훅 체인 확인 |
 | Codex CLI | 라이브 훅 체인 확인 |
-| Antigravity | payload injection 정합성 확인, hooks.json은 공식 호스트 스키마와 일치·호스트 1.1.2+에서 파싱·로드 확인(5 handlers), 단 config 경로 훅의 호스트 실행은 미확인 |
+| Antigravity | host 1.1.2+에서 payload·config load 정합성 확인, config-path 훅의 live 실행은 미확인 |
 
-### 상태 파일과 정직한 한계
+## 3. 이름·패키지·경로
 
-사용자 상태는 모두 `.fable-lite/` 아래에 둡니다. 주요 경로는 `ledger.json`, `goals.json`, intent·contract 파일, `agents/*.jsonl`, `snapshots/workspace-current.json`, `snapshots/turns/**`, `scorecard/gates.jsonl`, `provenance-config.json`이며, bounded Scorecard cache·락·백업·마이그레이션 복구 파일도 같은 디렉터리에 있습니다.
+| 표면 | canonical | legacy / 호환 |
+|---|---|---|
+| 제품 | show-me-the-work | fable-lite(과거 이름) |
+| CLI | `smtw` | `fable-lite` |
+| Python import | `smtw` | `fable_lite` |
+| distribution | 당분간 `fable-lite` | 동일 distribution |
+| runtime state | 신규·이관 프로젝트의 `.smtw/` | 미이관 프로젝트의 `.fable-lite/` |
+| project config | `.smtw.toml`, 그다음 `pyproject.toml` `[tool.smtw]` | `.fable-lite/config.json` fallback |
+| runtime env | `SMTW_*` | `FABLE_LITE_*` read alias |
 
-- 원장 마이그레이션은 명시적 opt-in입니다. 훅 프로세스 환경에 `FABLE_LITE_AUTO_MIGRATION=1`을 설정해야 하며, 패키지의 W9/W10 receipt도 모두 green이어야 합니다. `status`가 없는 구 invocation을 포함한 v2 원장은 opt-in이 꺼진 동안 절대 다시 쓰지 않고 attribution-degraded로 읽어 R2 파괴 동작을 fail-closed 차단합니다. opt-in 시에도 30분 lease 초과가 입증된 행만 `closed`로 채우며, lease 이내이고 R2 증거가 완전한 행은 `open`으로 보존합니다. 분류할 수 없는 행은 원본·degraded 상태를 유지합니다. 마이그레이션 실패는 훅 세션을 죽이지 않되 `core.ledger` warning에 stage/detail을 남깁니다. 성공한 변환만 immutable `ledger.v2-invocation-status.json.bak` 보존, 전체 스키마 검증, 원자 교체 순서로 반영합니다.
-- Stop은 최대 2회 차단 후 fail-open으로 통과시킵니다. 교착 방지 장치이며 적대 모델을 막는 보안 경계가 아닙니다.
-- 프로젝트 루트 밖 파일과 DB·네트워크 부작용은 직접 관측하지 않습니다.
-- provenance 지원 상한은 관측 대상 10,000개·총 256 MiB입니다. 상한 근처의 Stop full reconcile은 수 초가 걸릴 수 있습니다. 더 크거나 느린 범위는 partial snapshot을 저장하지 않고 `scope too large`를 1회 안내한 뒤 advisory-only로 처리합니다. 시간 상한은 파일시스템 호출과 hash chunk 사이의 협력적 제한이라 단일 OS 호출 정지는 선점할 수 없습니다.
-- 직접 `ssh`와 로컬→원격 `scp` 시도는 로컬 부작용 가능성과 독립적으로 remote mutation epoch를 기록하며, 전체 명령이 부분 원격 변경 뒤 실패한 경우도 포함합니다. 이 epoch는 나중에 별도로 시작한 성공 검증으로 해소하며 로컬 전용 검증도 포함될 수 있으므로, 원격 상태를 clean으로 관측했다는 뜻은 아닙니다. shell 명령은 local snapshot 관측도 계속 유지하므로 redirect·pipeline·chain·substitution·위험 SSH 옵션은 해당 시 local reconcile과 remote epoch를 모두 적용합니다. 조회·포워딩 전용 SSH 동작과 `scp` download는 remote epoch를 만들지 않습니다.
-- 텍스트로만 "하겠습니다"라고 끝내는 경우는 manual probe `PRB-01`이며 전용 차단 규칙이 없습니다. gate별 독립 toggle은 manual probe `PRB-11`이고 아직 구현되지 않았습니다.
-- 이 도구는 작업 규율과 증거 품질을 높이지만 모델 능력을 높이거나 의도적 우회를 완전히 방어하지는 않습니다.
+한 시점에 authoritative state tree는 하나입니다. runtime authority를
+이관한 뒤에도 호환 기간에는 legacy activation config가 fallback config
+source로 남을 수 있습니다.
 
-## 설치 형태
+## 4. 1분 설치
 
-Claude Code 플러그인 manifest는 `.claude-plugin/plugin.json`에 있으며, 훅 정의는 `adapters/claude_code/hooks.json`에 있습니다. 훅은 모두 Windows native Python 명령만 사용합니다.
+전제 조건은 `PATH`에서 실행 가능한 Python 3.12+입니다. runtime은 Python
+표준 라이브러리만 사용합니다. 감독하지 않는 프로젝트가 매 훅마다 Python
+기동 비용을 내지 않도록 project scope 설치를 권장합니다.
 
-> **전제: 대상 환경에 Python 3.12+가 PATH에 있어야 합니다.** 훅이 stdlib Python 스크립트이므로, `python`이 없는 호스트(예: 새 워커 노트북)는 먼저 Python을 설치해야 합니다. 외부 패키지 의존은 없습니다.
-
-Claude Code 감독은 프로젝트별 quiet opt-in입니다.
-`<프로젝트>/.fable-lite/config.json`에
-`{"schema_version":1,"supervision":true}`를 정확히 두어야 활성화됩니다.
-config가 없거나 `false` 또는 비불리언 값이면 모든 훅이 조용히 no-op하며,
-사용자 홈 디렉토리 자체에서는 항상 비활성입니다.
-`SMTW_TEST_FORCE_ENABLE=1`은 어댑터 자동 테스트에서만 config 판정을
-우회하는 테스트 전용 스위치이며 일반·운영 세션에서 사용하면 안 됩니다.
-
-최초 `cwd 폴백은 best-effort`일 뿐 보안 신뢰 경계가 아닙니다. Claude가
-`CLAUDE_PROJECT_DIR`를 제공하거나 세션 루트가 latch되기 전에는 위조된 훅
-payload/cwd가 최초 상향 config 탐색을 다른 위치로 유도할 수 있습니다. mismatch
-env 루트는 해당 프로젝트가 정확히 opt-in한 경우에만 이번 훅의 유효 루트로
-사용하며, 아니면 이번 훅의 감독은 비활성입니다. write-once latch는 바꾸지 않습니다.
-비활성 config가 손상된 경우 세션당 1회 경고와 TTL 정리는 전역 플러그인 데이터
-아래에만 쓸 수 있으며, 비활성 프로젝트 내부에는 어떤 상태도 쓰지 않습니다.
-
-권장 설치는 로컬 클론을 먼저 Claude Code marketplace에 등록하는 방식입니다.
-
-```powershell
+```bash
 git clone https://github.com/pinetreeB/show-me-the-work
-claude plugin marketplace add <show-me-the-work 경로>
-/plugin install show-me-the-work@show-me-the-work
-```
-
-원격 marketplace 등록이 완료된 뒤에는 `/plugin marketplace add pinetreeB/show-me-the-work`로 로컬 경로 등록 단계를 대체할 수 있습니다.
-
-### 프로젝트 scope 설치 (다른 프로젝트 완전 무비용)
-
-user scope(전역) 설치는 감독이 꺼진 프로젝트에서도 훅 이벤트마다 Python
-인터프리터가 기동됩니다 — 비활성 프로젝트는 즉시 `{}`로 종료하지만 기동
-비용 자체는 남습니다. 감독 대상 밖 프로젝트를 진짜 0비용으로 만들려면
-플러그인을 프로젝트 scope로 설치해 해당 프로젝트 안에서만 훅이 로드되게
-하십시오:
-
-```
+cd show-me-the-work
+claude plugin marketplace add .
 claude plugin install show-me-the-work@show-me-the-work --scope project
+smtw init --root .
+smtw doctor --root .
 ```
 
-이 명령은 프로젝트 `.claude/settings.json`에
-`"enabledPlugins": {"show-me-the-work@show-me-the-work": true}`를 기록하며,
-커밋해 팀과 공유할 수 있습니다. 개인 전용(미커밋)으로 두려면 `--scope local`
-(`.claude/settings.local.json`)을 사용하십시오. 반대 방향도 가능합니다:
-user scope 설치를 유지한 채 특정 프로젝트에서만 끄려면 그 프로젝트의
-`.claude/settings.local.json`에 같은 키를 `false`로 두면 됩니다. 어느 쪽이든
-감독 활성화에는 위의 프로젝트별 `.fable-lite/config.json` opt-in이 추가로
-필요합니다.
+`smtw init`은 정확한 사용자 홈을 거절하고, 기존 canonical/legacy config를
+덮어쓰지 않으며, runtime state를 만들거나 legacy state를 이관하지 않습니다.
+기본값은 `.smtw.toml`을 만들고 `.gitignore`에 runtime 패턴을 제안한 뒤
+`smtw doctor`를 안내합니다. `--config pyproject`를 쓰면 canonical table을
+`pyproject.toml`에 추가하고, `--no-gitignore`는 ignore 파일을 건드리지
+않습니다.
 
-## 목표 체크포인트 CLI
+개인 전용 미커밋 플러그인 등록은 Claude의 `--scope local`을 사용하십시오.
+user scope 설치도 가능하지만 감독이 꺼진 프로젝트에서도 빈 훅 결과를
+반환하기 전에 Python 프로세스가 시작됩니다. 정확한 사용자 홈은 config가
+있어도 항상 비활성입니다.
 
-```powershell
-python goals/goals.py plan --root . --goal "페이지 만들기" --story "관리자 페이지 렌더" --verify-cmd "python -m pytest"
-python goals/goals.py verify --root . --story "관리자 페이지 렌더" --evidence "pytest green"
-python goals/goals.py status --root .
+최초 `cwd 폴백은 best-effort`일 뿐 security trust boundary가 아닙니다.
+Claude가 `CLAUDE_PROJECT_DIR`를 제공하거나 session root가 latch되기 전에는
+위조된 hook payload 또는 working directory가 최초 상향 config search를
+다른 위치로 유도할 수 있습니다. mismatch environment root는 선택된
+프로젝트가 자체 exact opt-in config를 가진 경우에만 해당 hook에 유효합니다.
+
+## 5. 프로젝트 설정
+
+권장 dedicated config:
+
+```toml
+# .smtw.toml
+schema_version = 1
+supervision = true
 ```
 
-## 평가 프로브 러너
+canonical 대안:
 
-결정론적 프로브는 훅 스크립트를 fixture payload로 실행해 자동 판정하고, 모델 실행이나 루브릭 채점이 필요한 프로브는 `manual`로 남깁니다.
-
-```powershell
-python eval/run_probes.py
-python eval/run_probes.py --strict
-python eval/run_probes.py --output eval/results/probes-latest.json
+```toml
+# pyproject.toml
+[tool.smtw]
+schema_version = 1
+supervision = true
 ```
 
-기본 결과 파일은 `eval/results/probes-latest.json`이며 이 재생성 산출물 디렉터리는 Git에서 무시됩니다.
-CI는 runner 임시 경로를 `--output`으로 지정합니다. 콘솔 요약은 Windows CP949에서도 깨지지 않도록
-ASCII만 출력합니다.
+config 우선순위는 엄격합니다.
 
-```text
-probes pass=17 fail=0 manual=3 total=20 result=PASS
+1. `.smtw.toml`
+2. `pyproject.toml`의 `[tool.smtw]`
+3. legacy `.fable-lite/config.json`
+
+우선순위가 높은 config가 선언됐지만 유효하지 않으면 오류입니다. 활성화된
+legacy config로 조용히 fallback하지 않습니다. canonical/legacy runtime
+환경변수는 값이 같을 때만 공존할 수 있습니다. 값 충돌은 fail-closed이며,
+`smtw doctor`는 secret 원문을 출력하지 않고 key 이름만 보고합니다.
+
+### 기존 legacy 프로젝트
+
+기존 프로젝트는 다음 호환 activation file을 유지할 수 있습니다.
+
+```json
+{"schema_version": 1, "supervision": true}
 ```
 
-기본 러너는 실패 프로브가 있어도 JSON 리포트를 끝까지 쓰고 종료코드 0으로 끝납니다. 릴리스 게이트에서는 `--strict`를 사용해 실패가 있으면 non-zero로 종료합니다. 결과는 `summary.fail`과 `result` 필드에도 기록됩니다.
+`smtw init`은 이 파일을 보존하고 명시적인 migration check를 안내합니다.
+canonical config에서 `supervision = false`로 두거나 activation config를
+모두 제거하면 감독이 비활성화됩니다. 비활성화는 기존 state를 삭제하지
+않습니다. `SMTW_TEST_FORCE_ENABLE=1`은 자동 테스트 전용이며 일반 세션에서
+사용하면 안 됩니다.
 
-## 오케스트레이터 CLI
+## 6. 상태 authority와 migration
 
-wmux 좌상 오케스트레이터는 위임 전 `brief`로 작업 규율 블록을 만들고, 워커 완료 후 `check`로 원장과 git diff를 대조합니다.
+`smtw status`와 `smtw doctor`는 현재 authority를 보여줍니다.
 
-canonical Python 패키지는 `smtw`입니다. 기존 `fable_lite` import,
-`python -m fable_lite`, `python -m fable_lite.scorecard` 같은 public
-submodule 호출은 v3.x까지 deprecation shim으로 유지되며
-`DeprecationWarning`을 냅니다. shim 제거는 v4 이후입니다.
-`PYTHONWARNINGS=error`처럼 이 경고를 명시적으로 오류로 승격하는 환경은
-호환 보장 대상이 아닙니다. 소스 체크아웃에서는 인접 `pyproject.toml`
-버전을 설치 메타데이터보다 우선하며, `smtw doctor`가 모듈/배포 경로와
-버전 불일치를 함께 보고합니다.
+| layout | 의미 | authority / 조치 |
+|---|---|---|
+| `EMPTY` | state tree가 없음 | 다음 활성 write는 `.smtw/` 사용 |
+| `LEGACY` | 미이관 legacy tree만 있음 | `.fable-lite/`; migration은 선택적·명시적 |
+| `NATIVE` | migration marker 없는 canonical tree가 있음 | `.smtw/` |
+| `MIGRATING` | legacy source와 소유된 staging state가 있음 | `.fable-lite/`; 현재 migration을 기다리거나 조사 |
+| `MIGRATED` | 검증·publish된 canonical tree가 있음 | `.smtw/`; 보존된 legacy는 fallback authority가 아님 |
+| `CONFLICT` | 안전한 단일 authority를 증명할 수 없음 | authority 없음; 관련 작업 block 또는 degraded |
 
-```powershell
-python -m smtw brief --paths "core/**,tests/**" --verify-cmd "python -m pytest tests/" --sentinel tmp/.done-x --target codex
-python -m smtw check --root . --agent codex --since-file tmp/.delegation-start
-python -m smtw brief --card C:\Users\rotat\.claude\tmp\cards\work.json && python -m smtw check --card C:\Users\rotat\.claude\tmp\cards\work.json
+```bash
+smtw status --root .
+smtw migrate --root . --check
+smtw migrate --root .
+smtw doctor --root .
 ```
 
-`check`는 변경 파일, 미검증 변경, scope 이탈, R1 계약 필요, sentinel 약속 미이행을 한국어로 요약합니다. exit code `0`만 green이며, sentinel 존재만으로 완료로 보지 않습니다.
+layout migration은 자동 실행되지 않습니다. `--check`는 write-free입니다.
+migration은 새 authority를 copy·verify한 뒤 원자적으로 publish하며, active
+turn이나 open invocation이 있으면 defer합니다. 성공 뒤에도 명시적 rollback
+판단을 위해 source tree를 보존하고 publish 이후에는 그 tree로 조용히
+fallback하지 않습니다. 지원되는 state writer는 공통 layout barrier를
+사용하므로 publish 경계에서 성공한 write를 잃지 않습니다.
 
-## 출처
+layout migration과 versioned ledger backfill은 서로 다른 기능입니다. ledger
+migration 환경 스위치를 `smtw migrate` 대신 사용하지 마십시오.
 
-검증 접지, 분해/증거 게이트, 조사 루프, 조기종료 방지의 절차 구조는 MIT 라이선스의 `fivetaku/fablize`에서 검증된 아이디어를 참고했습니다. 의도 게이트의 인터뷰 방법론(요구사항 모호성 채점 → 임계 게이팅 → 1문1답 확정)은 MIT 라이선스의 [`Yeachan-Heo/gajae-code`](https://github.com/Yeachan-Heo/gajae-code)에서 차용했습니다. 문장과 코드는 전부 새로 작성했습니다.
+## 7. 빠른 운영 명령
+
+```bash
+smtw doctor --root .
+smtw doctor --root . --json
+smtw status --root .
+smtw migrate --root . --check
+smtw quarantine list --root .
+smtw scorecard --root . --view coordination
+smtw goals status --root . --identity <host:session-id:agent>
+```
+
+`doctor`는 tool/distribution/module 버전, Python, host/plugin/config, 환경
+충돌, state authority, migration readiness, active work, ledger/provenance
+health, quarantine 사용량, probe/host 상태를 보고합니다. 종료코드는 `0`
+healthy, `1` unsafe/error, `2` inactive/deferred/action required입니다.
+`status`는 더 짧은 runtime view입니다.
+
+multi-story 작업 예시:
+
+```bash
+smtw goals plan --root . --goal "release" --story "Windows 검증" --verify-cmd "python -m pytest"
+smtw goals verify --root . --story "Windows 검증" --evidence "pytest green"
+```
+
+wmux 형태의 위임에서는 `brief`가 작업 규율 블록을 만들고 `check`가 원장과
+worktree를 대조합니다.
+
+```bash
+smtw brief --paths "core/**,tests/**" --verify-cmd "python -m pytest tests/" --sentinel tmp/.done --target codex
+smtw check --root . --agent codex --since-file tmp/.delegation-start
+```
+
+## 8. 게이트 동작
+
+| gate / 경계 | event | 사용하는 evidence | block cap | 실패 정책 | Known Limitation |
+|---|---|---|---|---|---|
+| N1 조사 | prompt routing, Stop | 한·영 hypothesis/evidence/rejection marker | Stop cap 2회 공유 | cap 이후 감사기록과 함께 fail-open | marker는 보고 구조만 증명하고 가설의 진위를 증명하지 않음 |
+| N2 goals / intent / design | prompt, completion checkpoint | identity별 plan·검증 증거·확정 intent | gate별 2회 | cap 이후 감사기록과 함께 fail-open | synthetic/foreign identity는 다른 active identity를 만족시킬 수 없음 |
+| verification completion | Stop / AfterAgent | 현재 변경을 덮는 성공 command observation | 2회 | cap 이후 감사기록과 함께 fail-open | 성공한 test가 잘못 선택된 test일 수 있음 |
+| R1 high-risk contract | PreToolUse | authoritative tree 아래 evidence-bearing identity contract | 일반 cap 없음 | contract 전까지 hard block | 선택된 위험군을 다루며 외부 승인은 아님 |
+| R2 파괴 보호 | PreToolUse | parsed target, logical/resolved candidate, peer ownership, protected state | cap 없음 | ambiguity와 peer risk는 fail-closed | 동적 실행은 항상 정적으로 decode할 수 없음 |
+| scope drift | PostToolUse | 요청 scope와 관측 경로 비교 | advisory | 턴별 dedupe warning | edit를 되돌리지는 않음 |
+| stale mutation | PreToolUse | 현재 turn identity와 lifecycle | cap 없음 | mutation deny, 입증된 read-only는 기존 정책 유지 | 구버전의 오래된 turn은 abandoned work와 구분하기 어려울 수 있음 |
+| runtime env conflict | 활성 hook 전체 | canonical/legacy 변수 존재·값 일치 | cap 없음 | fail-closed | secret 원문이 아니라 이름만 보고 |
+| state layout conflict | state consumer / mutation | 검증된 layout과 migration marker | cap 없음 | authority 없음, block 또는 degraded | operator 조사가 필요할 수 있음 |
+
+일반 observer·health 기록 실패는 대체로 warning과 함께 fail-open합니다. 이
+정책은 R2, 환경변수 충돌, authority 충돌 경계를 약화하지 않습니다. inline
+Python path hint는 마찰 장치이지 권한 경계가 아니며, 독립된 R2가 권한 경계를
+담당합니다.
+
+## 9. 멀티에이전트 운영
+
+- **identity:** exact identity는 `host:session-id:agent`입니다. exact active
+  identity가 하나면 자동 선택할 수 있지만 둘 이상이면 `--identity` 또는
+  일치하는 `--host`, `--session-id`, `--agent`가 필요합니다. synthetic
+  identity를 성공한 ownership처럼 표시하지 않습니다.
+- **candidate ownership:** 도구가 선언한 경로는 attribution용 logical
+  project-relative candidate로 보존하고, 현재 resolve된 경로는 R2 peer
+  matching용으로 따로 추적합니다. symlink가 교체돼도 선언 ownership 기록은
+  사라지지 않습니다.
+- **settlement:** peer의 open invocation 또는 unsettled revision은 파괴
+  작업이 소비하기 전에 종료하거나 명시적으로 정산해야 합니다. 시간이
+  지났다는 이유만으로 ownership을 지우지 않습니다.
+- **R2:** 파괴 명령은 peer candidate와 canonical/legacy state path를 모두
+  검사합니다. 파괴 target을 해석할 수 없으면 안전하다고 추측하지 않고
+  거절합니다.
+- **goals:** checkpoint는 identity namespace에 저장됩니다. 한 identity의
+  plan으로 다른 identity의 N2 gate를 회복할 수 없습니다.
+- **quarantine:** R2에 차단된 명령은 authoritative tree에 best-effort로
+  보관됩니다. 보관 성공·실패는 deny 결정을 바꾸지 않습니다. operator가
+  list/show/clear할 수 있지만 자동 apply는 없습니다.
+- **stale turn:** stale turn의 mutation-capable 작업은 invocation 등록 전에
+  거절됩니다. 현재 prompt를 제출해 새 turn을 시작해야 합니다.
+- **migration:** migration 중 state를 수동 수정하지 마십시오. layout barrier가
+  지원 writer를 직렬화하고, live work가 보이면 migration이 defer합니다.
+
+[LazyCodex/OmO](https://github.com/code-yeongyu/oh-my-openagent)의 `ulw`가
+작업을 끝까지 진행시키고 show-me-the-work가 완료 증거를 검사하는 방식으로
+함께 사용할 수 있습니다. 두 도구는 서로 보완하지만 상대 도구의 권한을
+확장하지 않습니다.
+
+## 10. 호환성
+
+legacy state/config/environment read와 `fable_lite` Python shim은 v3.x 호환
+기간 동안 유지됩니다. 제거는 v4보다 이르지 않게 계획되어 있으며, upgrade
+전 changelog를 확인해야 합니다. state migration이 publish된 뒤 호환 read가
+옛 authority로의 파일별 fallback을 뜻하지는 않습니다.
+
+| legacy 표면 | 지원 상태 | canonical 대체 |
+|---|---|---|
+| `fable-lite` console script | 호환 상태로 지원 | `smtw` |
+| `import fable_lite`와 public submodule | 프로세스당 한 번 `DeprecationWarning`을 내는 alias | `import smtw` |
+| `python -m fable_lite` | 지원, deprecated | `python -m smtw` |
+| `python -m fable_lite.cli` | physical thin shim 지원 | `python -m smtw` |
+| `python -m fable_lite.scorecard` | physical thin shim 지원 | `smtw scorecard` |
+| `python -m fable_lite.migrate` | physical thin shim 지원 | `smtw migrate` |
+| 그 밖의 public `fable_lite.<module>` 실행 | physical compatibility shim 존재, CLI module은 `smtw`로 위임 | top-level `smtw` CLI 권장 |
+
+기본 warning 처리는 지원합니다. `-W error::DeprecationWarning` 또는
+`PYTHONWARNINGS=error`로 `DeprecationWarning`을 오류 승격하는 환경은
+의도적으로 호환 계약 밖입니다.
+
+source checkout에서는 인접 `pyproject.toml`과 `.git`이 있으면, 더 오래된
+global distribution이 설치돼 있어도 source version을 우선합니다.
+`smtw doctor`가 module/distribution 경로와 버전을 모두 보고하고 불일치를
+경고합니다. wheel 설치에서는 distribution metadata가 authoritative합니다.
+
+## 11. 성능과 scope
+
+- project-scope 플러그인 설치를 권장합니다. 비활성 global 설치는 프로젝트에
+  write하지 않지만 매 hook event에 Python interpreter가 시작됩니다.
+- release 지원 범위는 관측 entry 10,000개와 regular-file content 256 MiB입니다.
+  full reconciliation은 8초, incremental observation은 2초의 협력적 deadline을
+  사용합니다.
+- 상한 근처의 Stop full reconciliation은 수 초가 걸릴 수 있습니다. entry,
+  byte, time 예산 중 하나를 넘으면 partial snapshot을 버리고 완전 관측을
+  주장하는 대신 `scope_too_large`를 보고합니다.
+- deadline은 filesystem call과 hash chunk 사이에서 검사합니다. 한 OS call이
+  멈춘 경우 이 in-process scanner가 선점할 수 없습니다.
+- layout inspection과 `status`는 로컬 filesystem 작업입니다. `doctor`는
+  config·ledger·quarantine inventory·마지막 probe receipt도 읽지만 network
+  call은 하지 않습니다.
+
+생성물·vendor tree를 제외한 집중된 project root를 사용하십시오. provenance
+exclude는 관측 범위를 줄이는 trust decision이므로 검토가 필요합니다.
+
+## 12. 개인정보·보존·삭제
+
+state는 프로젝트 authority에 로컬로 저장되지만 민감한 작업 문맥을 포함할 수
+있습니다.
+
+- command와 영향 경로
+- file digest, invocation·turn metadata
+- prompt에서 유도한 intent·goals·high-risk contract evidence
+- agent log, verification observation, gate journal, scorecard
+- 차단 명령의 quarantine content
+
+runtime state는 기본적으로 commit하거나 외부 전송하지 마십시오. `smtw init`은
+canonical/legacy tree 모두에 대한 ignore pattern을 제안합니다. quarantine은
+64개, 총 16 MiB, 7일로 제한되며, command 한 건은 1 MiB까지 저장하고 초과하면
+original/stored byte count와 SHA-256 metadata를 남깁니다. 그 밖의 state는
+프로젝트 정책이나 operator가 제거할 때까지 남습니다.
+
+```bash
+smtw status --root .
+smtw quarantine list --root .
+smtw quarantine clear --root . --all
+```
+
+전체 state를 자동 초기화하는 명령은 없습니다. 수동 삭제 전 supervision을
+끄고 active agent를 종료한 뒤 `status`/`doctor`로 authority를 확인하고, 필요한
+감사·rollback 자료를 보존하며, canonical tree와 보존된 legacy tree를 별개로
+취급하십시오. 잘못된 tree 삭제는 증거나 rollback 자료를 없앨 수 있습니다.
+supervision 비활성화만으로 파일이 삭제되지는 않습니다.
+
+## 13. 개발과 검증
+
+blocking CI matrix는 Ubuntu·Windows, Python 3.12에서 다음을 실행합니다.
+
+```bash
+python scripts/sync_version.py --check
+ruff check core adapters fable_lite goals tests eval contrib scripts smtw --exclude eval/ab
+python -m pytest tests/ -q
+python eval/run_probes.py --strict --output tmp/smtw-probes.json
+python eval/e2e_smoke.py
+python -m compileall -q core adapters fable_lite goals eval contrib scripts smtw
+python -m eval.provenance.run --output tmp/smtw-provenance.json
+python -m build --wheel --outdir dist
+python scripts/check_wheel_contents.py --wheel-dir dist
+```
+
+이후 clean Python 3.12 virtual environment에 wheel을 설치해 canonical/legacy
+module·console entry point를 smoke합니다. release-quality는 randomized
+provenance, 1k/10k performance receipt(shared runner 변동 때문에 non-blocking),
+8-process Stop counter race도 실행합니다.
+
+결정론적 probe runner는 자동 항목을 pass/fail로 기록하고 모델 판정 항목은
+`manual`로 남깁니다. 실패 시 non-zero가 필요하면 `--strict`를 사용하고, 로컬
+receipt 교체를 피하려면 scratch `--output` 경로를 지정하십시오.
+
+### 출처와 라이선스
+
+조사·검증·분해·조기종료 방지 절차는
+[fivetaku/fablize](https://github.com/fivetaku/fablize)(MIT)에서 검증된
+아이디어를 참고했습니다. intent interview 방법은
+[Yeachan-Heo/gajae-code](https://github.com/Yeachan-Heo/gajae-code)(MIT)에서
+차용했습니다. 평가 루프는
+[rennf93/opus-fable-playbook](https://github.com/rennf93/opus-fable-playbook)과
+[elon-choo/fablever](https://github.com/elon-choo/fablever)의 아이디어를
+참고했습니다. 문장과 코드는 모두 새로 작성했습니다.
+
+MIT © pinetreeB
