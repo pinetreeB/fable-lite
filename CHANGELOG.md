@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- **R2-07A/B/C shell command-position hardening**: R2 now inspects command
+  substitutions in unquoted heredocs while leaving quoted and literal heredoc
+  data alone, treats option-bearing shell heredoc stdin as executable script
+  input, and follows `builtin command` / `builtin exec` prefixes. Malformed
+  executable substitutions remain fail-closed; this is targeted destructive
+  command supervision, not an arbitrary-code sandbox.
+
 ## [2.6.1] - 2026-07-24 — Safety Boundary & Documentation Stabilization
 
 No new gate semantics. Closes the v2.6.1 stabilization handoff

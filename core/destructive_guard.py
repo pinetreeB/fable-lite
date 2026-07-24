@@ -49,6 +49,7 @@ WRAPPER_COMMAND_NAMES: Final[frozenset[str]] = frozenset(
     {
         *SHELL_COMMAND_NAMES,
         "busybox",
+        "builtin",
         "cmd",
         "cmd.exe",
         "command",
@@ -203,6 +204,14 @@ class ParsedDestructiveCommand:
     resolved: bool
     targets: tuple[str, ...]
     reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class _HeredocDeclaration:
+    delimiter: str
+    strip_tabs: bool
+    quoted: bool
+    consumer: str
 
 
 def _tokenize(command: str) -> list[str]:
@@ -699,8 +708,32 @@ def _find_arithmetic_end(line: str, opening: int) -> int | None:
     return None
 
 
-def _heredoc_declarations(line: str) -> tuple[list[tuple[str, bool]], bool]:
-    declarations: list[tuple[str, bool]] = []
+def _heredoc_consumer(line: str, operator: int) -> str:
+    """Return the effective command receiving one heredoc redirect."""
+    tokens = _tokenize(line[:operator])
+    last_boundary = -1
+    for index, token in enumerate(tokens):
+        if _unquote(token) in {"&&", "||", ";", "|", "&"}:
+            last_boundary = index
+    tokens = _command_position_tokens(tokens[last_boundary + 1 :])
+    while tokens and _command_name(tokens[0]) in {
+        "builtin",
+        "command",
+        "env",
+        "exec",
+    }:
+        wrapper = _command_name(tokens[0])
+        payload = _wrapper_payload_tokens(tokens, wrapper)
+        if not payload or payload == tokens:
+            return ""
+        tokens = _command_position_tokens(payload)
+    return _command_name(tokens[0]) if tokens else ""
+
+
+def _heredoc_declarations(
+    line: str,
+) -> tuple[list[_HeredocDeclaration], bool]:
+    declarations: list[_HeredocDeclaration] = []
     quote = ""
     escaped = False
     index = 0
@@ -748,6 +781,7 @@ def _heredoc_declarations(line: str) -> tuple[list[tuple[str, bool]], bool]:
 
         delimiter: list[str] = []
         word_quote = ""
+        quoted = False
         while cursor < len(line):
             character = line[cursor]
             if word_quote:
@@ -761,10 +795,12 @@ def _heredoc_declarations(line: str) -> tuple[list[tuple[str, bool]], bool]:
                 cursor += 1
                 continue
             if character in "'\"":
+                quoted = True
                 word_quote = character
                 cursor += 1
                 continue
             if character == "\\" and cursor + 1 < len(line):
+                quoted = True
                 cursor += 1
                 delimiter.append(line[cursor])
                 cursor += 1
@@ -775,24 +811,113 @@ def _heredoc_declarations(line: str) -> tuple[list[tuple[str, bool]], bool]:
             cursor += 1
         if word_quote or not delimiter:
             return declarations, True
-        declarations.append(("".join(delimiter), strip_tabs))
+        declarations.append(
+            _HeredocDeclaration(
+                delimiter="".join(delimiter),
+                strip_tabs=strip_tabs,
+                quoted=quoted,
+                consumer=_heredoc_consumer(line, index),
+            )
+        )
         index = cursor
     return declarations, False
 
 
-def _shell_reads_heredoc(line: str) -> bool:
+def _shell_stdin_is_script(tokens: list[str]) -> bool:
+    """Classify whether a shell takes its script from standard input.
+
+    ``-c``/``--command`` and a positional script file are separate payload
+    sources. Other options do not make stdin data, and unknown options stay on
+    the fail-closed side when a heredoc body contains a destructive command.
+    """
+    stdin_forced = False
+    index = 1
+    while index < len(tokens):
+        token = _unquote(tokens[index])
+        if token in {"-c", "--command"} or token.startswith("--command="):
+            return False
+        if token in {"--help", "--version"}:
+            return False
+        if token == "--":
+            return stdin_forced or index + 1 >= len(tokens)
+        if token in {"-", "-s", "--stdin"}:
+            stdin_forced = True
+            index += 1
+            continue
+        if token in {"-o", "+o", "-O", "--init-file", "--rcfile"}:
+            if index + 1 >= len(tokens):
+                return True
+            index += 2
+            continue
+        if token.startswith(("-", "+")) and token not in {"-", "+"}:
+            short_flags = token[1:] if not token.startswith("--") else ""
+            if "c" in short_flags:
+                return False
+            if token.startswith("-") and "s" in short_flags:
+                stdin_forced = True
+            index += 1
+            continue
+        return stdin_forced
+    return True
+
+
+def _shell_reads_heredoc(line: str, declaration: _HeredocDeclaration) -> bool:
+    if declaration.consumer not in SHELL_COMMAND_NAMES:
+        return False
     operator = line.find("<<")
     if operator < 0:
         return False
-    prefix = _tokenize(line[:operator])
-    if not prefix or _command_name(prefix[0]) not in SHELL_COMMAND_NAMES:
+    tokens = _tokenize(line[:operator])
+    last_boundary = -1
+    for index, token in enumerate(tokens):
+        if _unquote(token) in {"&&", "||", ";", "|", "&"}:
+            last_boundary = index
+    tokens = _command_position_tokens(tokens[last_boundary + 1 :])
+    while tokens and _command_name(tokens[0]) in {
+        "builtin",
+        "command",
+        "env",
+        "exec",
+    }:
+        payload = _wrapper_payload_tokens(tokens, _command_name(tokens[0]))
+        if not payload or payload == tokens:
+            return True
+        tokens = _command_position_tokens(payload)
+    if not tokens or _command_name(tokens[0]) not in SHELL_COMMAND_NAMES:
         return False
-    options = {_unquote(token).casefold() for token in prefix[1:]}
-    return not options or options <= {"-s", "--stdin"}
+    return _shell_stdin_is_script(tokens)
+
+
+def _heredoc_expansion_commands(body: str) -> tuple[list[str], bool]:
+    """Extract commands expanded by the outer shell in an unquoted heredoc."""
+    commands: list[str] = []
+    malformed = _has_ambiguous_nested_backticks(body)
+    index = 0
+    while index < len(body):
+        character = body[index]
+        if character == "\\":
+            index += 2
+            continue
+        if body[index : index + 2] == "$(":
+            closing = _find_substitution_end(body, index + 1)
+            if closing is None:
+                return commands, True
+            commands.append(body[index + 2 : closing])
+            index = closing + 1
+            continue
+        if character == "`":
+            closing = _find_backtick_end(body, index)
+            if closing is None:
+                return commands, True
+            commands.append(body[index + 1 : closing])
+            index = closing + 1
+            continue
+        index += 1
+    return commands, malformed
 
 
 def _without_heredoc_bodies(command: str) -> tuple[str, bool, list[str]]:
-    pending: list[tuple[str, bool, bool, list[str]]] = []
+    pending: list[tuple[_HeredocDeclaration, bool, list[str]]] = []
     retained: list[str] = []
     executable_bodies: list[str] = []
     malformed = False
@@ -800,22 +925,32 @@ def _without_heredoc_bodies(command: str) -> tuple[str, bool, list[str]]:
         content = line.rstrip("\r\n")
         line_ending = line[len(content) :]
         if pending:
-            delimiter, strip_tabs, executable, body = pending[0]
-            candidate = content.lstrip("\t") if strip_tabs else content
+            declaration, executable, body = pending[0]
+            candidate = (
+                content.lstrip("\t") if declaration.strip_tabs else content
+            )
             retained.append(line_ending)
-            if candidate == delimiter:
+            if candidate == declaration.delimiter:
                 pending.pop(0)
+                body_text = "".join(body)
                 if executable:
-                    executable_bodies.append("".join(body))
-            elif executable:
+                    executable_bodies.append(body_text)
+                elif not declaration.quoted:
+                    expansions, invalid = _heredoc_expansion_commands(body_text)
+                    executable_bodies.extend(expansions)
+                    malformed = malformed or invalid
+            else:
                 body.append(line)
             continue
         retained.append(line)
         declarations, invalid = _heredoc_declarations(content)
-        executable = _shell_reads_heredoc(content)
         pending.extend(
-            (delimiter, strip_tabs, executable, [])
-            for delimiter, strip_tabs in declarations
+            (
+                declaration,
+                _shell_reads_heredoc(content, declaration),
+                [],
+            )
+            for declaration in declarations
         )
         malformed = malformed or invalid
     return "".join(retained), malformed or bool(pending), executable_bodies
@@ -1199,7 +1334,7 @@ def _command_position_tokens(tokens: list[str]) -> list[str]:
 
 
 _EXECUTABLE_PREFIX_WRAPPERS: Final[frozenset[str]] = frozenset(
-    {"command", "env", "exec"}
+    {"builtin", "command", "env", "exec"}
 )
 
 
